@@ -54,9 +54,9 @@ sources:
       - src/backend/idma_tilelink_write.sv
 
   # Generated content
-  - target: rtl
-    files:
-      - target/rtl/idma_generated.sv
+  #- target: rtl
+  #  files:
+  #    - target/rtl/idma_generated.sv
 
   # Midends
   - target: rtl
@@ -77,6 +77,8 @@ sources:
   - target: rtl
     files:
       # Level 0
+      - src/frontend/desc64/idma_desc64_reg_pkg.sv
+      - src/frontend/desc64/idma_desc64_reg_top.sv
       - src/frontend/desc64/idma_desc64_ar_gen.sv
       - src/frontend/desc64/idma_desc64_ar_gen_prefetch.sv
       - src/frontend/desc64/idma_desc64_reader.sv
@@ -125,6 +127,6 @@ sources:
       - test/future/idma_tilelink2axi_bridge.sv
 
   # Generated content
-  - target: idma_test
-    files:
-      - target/rtl/tb_idma_generated.sv
+  #- target: idma_test
+  #  files:
+  #    - target/rtl/tb_idma_generated.sv
