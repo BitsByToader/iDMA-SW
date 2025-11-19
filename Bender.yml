@@ -54,9 +54,9 @@ sources:
       - src/backend/idma_tilelink_write.sv
 
   # Generated content
-  #- target: rtl
-  #  files:
-  #    - target/rtl/idma_generated.sv
+  - target: rtl
+    files:
+      - target/rtl/idma_generated.sv
 
   # Midends
   - target: rtl
@@ -127,6 +127,6 @@ sources:
       - test/future/idma_tilelink2axi_bridge.sv
 
   # Generated content
-  #- target: idma_test
-  #  files:
-  #    - target/rtl/tb_idma_generated.sv
+  - target: idma_test
+    files:
+      - target/rtl/tb_idma_generated.sv
