@@ -37,7 +37,7 @@ module idma_desc64fe_axisbe_wrap #(
     /// will no longer be word aligned, but only a single shifter is needed
     parameter bit          CombinedShifter  = 1'b0,
     /// Should the `R`-`AW` coupling hardware be present? (recommended)
-    parameter bit          RAWCouplingAvail = 1'b1,
+    parameter bit          RAWCouplingAvail = 1'b0,
     /// Mask invalid data on the manager interface
     parameter bit MaskInvalidData            = 1'b1,
     /// Should hardware legalization be present? (recommended)

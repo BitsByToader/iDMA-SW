@@ -4,12 +4,14 @@
 `include "axi/typedef.svh"
 `include "axi/assign.svh"
 `include "axi_stream/typedef.svh"
+`include "axi_stream/assign.svh"
 
 import axi_stream_test::*;
 import axi_test::*;
 import reg_test::reg_driver;
+import idma_desc64_reg_pkg::*;
 
-typedef class reg_driver;
+//typedef class reg_driver;
 
 module tb_idma_desc64fe_axisbe();
     logic clk, rst;
@@ -106,7 +108,7 @@ module tb_idma_desc64fe_axisbe();
         .axi_req_t(axi_req_t),
         .axi_rsp_t(axi_resp_t),
         .WarnUninitialized(1),
-        .UninitializedData("ones"),
+        .UninitializedData("zeros"),
         .ClearErrOnAccess(0),
         .AcqDelay(0),
         .ApplDelay(1)
@@ -178,7 +180,73 @@ module tb_idma_desc64fe_axisbe();
     assign i_reg_iface_bus.error   = bus_rsp.error;
     
     initial begin
+        logic error;
+    
         i_reg_iface_driver.reset_master();
+        @(posedge rst);
+        
+        repeat (5) @(posedge clk);
+        
+        i_reg_iface_driver.send_write(
+            .addr (IDMA_DESC64_DESC_ADDR_OFFSET),
+            .data (0),
+            .strb(8'hff),
+            .error(error)
+        );
+        
+        #100;
+        $finish();
+    end
+    
+    AXI_STREAM_BUS_DV #(
+        .DataWidth(64),
+        .IdWidth(3),
+        .DestWidth(1),
+        .UserWidth(1)
+    ) write_stream_if(clk);
+    
+    axi_stream_driver #(
+        .DataWidth(64),
+        .IdWidth(3),
+        .DestWidth(1),
+        .UserWidth(1)
+    ) write_drv = new(write_stream_if);
+    
+    `AXI_STREAM_ASSIGN_FROM_REQ(write_stream_if, wr_stream_req);
+    `AXI_STREAM_ASSIGN_FROM_RSP(write_stream_if, wr_stream_rsp);
+    
+    AXI_STREAM_BUS_DV #(
+        .DataWidth(64),
+        .IdWidth(3),
+        .DestWidth(1),
+        .UserWidth(1)
+    ) read_stream_if(clk);
+    
+    axi_stream_driver #(
+        .DataWidth(64),
+        .IdWidth(3),
+        .DestWidth(1),
+        .UserWidth(1)
+    ) read_drv = new(read_stream_if);
+    
+    `AXI_STREAM_ASSIGN_TO_REQ(rd_stream_req, read_stream_if);
+    `AXI_STREAM_ASSIGN_TO_RSP(rd_stream_rsp, read_stream_if);
+    
+    initial begin
+        read_drv.reset_tx();
+        write_drv.reset_rx();
+        @(posedge rst);
+        
+        forever begin
+            logic [63:0] data;
+            logic last;
+            
+            write_drv.recv(data, last);
+            $display("Got something from iDMA via AXIS: DATA=%0h LAST=%0h", data, last);
+            repeat (2) @(posedge clk);
+            read_drv.send(data, last);
+            $display("Sent back to iDMA via AXIS: DATA=%0h LAST=%0h", data, last);
+        end
     end
     
 endmodule
