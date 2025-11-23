@@ -50,7 +50,8 @@ VERILATOR_FLAGS += --assert
 # Generate coverage analysis
 #VERILATOR_FLAGS += --coverage
 # Run Verilator in debug mode
-#VERILATOR_FLAGS += --debug
+# VERILATOR_FLAGS += --debug
+# VERILATOR_FALGS += --runtime-debug
 # Add this trace to get a backtrace in gdb
 #VERILATOR_FLAGS += --gdbbt
 # Enable Verilog timing
@@ -87,6 +88,9 @@ run:
 
 	@echo
 	@echo "-- RUN ---------------------"
+
+	@rm -f *.mem
+	@ln -s ../../../test/wrapper/*.mem .
 
 	@rm -rf logs
 	@mkdir -p logs

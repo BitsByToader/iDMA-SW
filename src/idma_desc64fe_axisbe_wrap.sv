@@ -14,11 +14,11 @@ module idma_desc64fe_axisbe_wrap #(
     parameter int unsigned UserWidth        = 32'd1,
 
     /// Specifies the depth of the fifo behind the descriptor address register
-    parameter int unsigned InputFifoDepth         =     8,
+    parameter int unsigned InputFifoDepth   =     8,
     /// Specifies the buffer size of the fifo that tracks requests submitted to the backend
-    parameter int unsigned PendingFifoDepth       =     8,
+    parameter int unsigned PendingFifoDepth =     8,
     /// Specifies how many descriptors may be fetched speculatively
-    parameter int unsigned NSpeculation           =     4,
+    parameter int unsigned NSpeculation     =     4,
      /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight    = 32'd3,
     /// The depth of the internal reorder buffer:
@@ -27,7 +27,7 @@ module idma_desc64fe_axisbe_wrap #(
     parameter int unsigned BufferDepth      = 32'd2,
     /// How many requests the backend might have at the same time in its buffers.
     /// Usually, `NumAxInFlight + BufferDepth`
-    parameter int unsigned BackendDepth           =     NumAxInFlight + BufferDepth,
+    parameter int unsigned BackendDepth     = NumAxInFlight + BufferDepth,
     /// With of a transfer: max transfer size is `2**TFLenWidth` bytes
     parameter int unsigned TFLenWidth       = 32'd24,
     /// The depth of the memory system the backend is attached to
@@ -51,24 +51,24 @@ module idma_desc64fe_axisbe_wrap #(
     /// Print the info of the FIFO configuration
     parameter bit PrintFifoInfo              = 1'b0,
     /// Strobe Width (do not override!)
-    parameter int unsigned StrbWidth    = DataWidth / 8,
+    parameter int unsigned StrbWidth         = DataWidth / 8,
     /// Offset Width (do not override!)
-    parameter int unsigned OffsetWidth  = $clog2(StrbWidth),
+    parameter int unsigned OffsetWidth       = $clog2(StrbWidth),
     /// AXI4+ATOP Request and Response channel type
-    parameter type axi_req_t = logic,
-    parameter type axi_rsp_t = logic,
-    parameter type axi_r_chan_t = logic,
-    parameter type axi_w_chan_t = logic,
+    parameter type axi_req_t     = logic,
+    parameter type axi_rsp_t     = logic,
+    parameter type axi_r_chan_t  = logic,
+    parameter type axi_w_chan_t  = logic,
     parameter type axi_ar_chan_t = logic,
     parameter type axi_aw_chan_t = logic,
     /// AXI Stream Request and Response channel type
-    parameter type axis_req_t = logic,
+    parameter type axis_req_t    = logic,
     parameter type axis_t_chan_t = logic,
-    parameter type axis_rsp_t = logic,
+    parameter type axis_rsp_t    = logic,
     /// regbus interface types. Use the REG_BUS_TYPEDEF macros to define the types
     /// or see the idma backend documentation for more details
-    parameter type         reg_rsp_t              = logic,
-    parameter type         reg_req_t              = logic
+    parameter type reg_rsp_t    = logic,
+    parameter type reg_req_t    = logic
 )(
     /// clock
     input  logic                  clk_i             ,
@@ -199,58 +199,58 @@ idma_desc64_top #(
     .idma_rsp_ready_o (rsp_ready        ),
     .idma_busy_i      (|busy            ),
     .irq_o            (irq_o            )
-  );
+);
 
 
 ///BACKEND AXI///
 idma_backend_rw_axi_rw_axis #(
-        .CombinedShifter      ( CombinedShifter      ),
-        .DataWidth            ( DataWidth            ),
-        .AddrWidth            ( AddrWidth            ),
-        .AxiIdWidth           ( AxiIdWidth           ),
-        .UserWidth            ( UserWidth            ),
-        .TFLenWidth           ( TFLenWidth           ),
-        .MaskInvalidData      ( MaskInvalidData      ),
-        .BufferDepth          ( BufferDepth          ),
-        .RAWCouplingAvail     ( RAWCouplingAvail     ),
-        .HardwareLegalizer    ( HardwareLegalizer    ),
-        .RejectZeroTransfers  ( RejectZeroTransfers  ),
-        .ErrorCap             ( ErrorCap             ),
-        .PrintFifoInfo        ( PrintFifoInfo        ),
-        .NumAxInFlight        ( NumAxInFlight        ),
-        .MemSysDepth          ( MemSysDepth          ),
-        .idma_req_t           ( idma_req_t           ),
-        .idma_rsp_t           ( idma_rsp_t           ),
-        .idma_eh_req_t        ( idma_pkg::idma_eh_req_t),
-        .idma_busy_t          ( idma_pkg::idma_busy_t),
-        .axi_req_t ( axi_req_t ),
-        .axi_rsp_t ( axi_rsp_t ),
-        .axis_req_t ( axis_req_t ),
-        .axis_rsp_t ( axis_rsp_t ),
-        .write_meta_channel_t ( write_meta_channel_t ),
-        .read_meta_channel_t  ( read_meta_channel_t  )
-    ) i_idma_backend  (
-        .clk_i                ( clk_i           ),
-        .rst_ni               ( rst_ni          ),
-        .testmode_i           ( testmode_i      ),
-        .idma_req_i           ( idma_req        ),
-        .req_valid_i          ( req_valid       ),
-        .req_ready_o          ( req_ready       ),
-        .idma_rsp_o           ( idma_rsp        ),
-        .rsp_valid_o          ( rsp_valid       ),
-        .rsp_ready_i          ( rsp_ready       ),
-        .idma_eh_req_i        ( '0              ),
-        .eh_req_valid_i       ( '0              ),
-        .eh_req_ready_o       (                 ),
-        .axi_read_req_o       ( /* axi_read_req */    ),
-        .axi_read_rsp_i       ( /* axi_read_rsp */    ),
-        .axis_read_req_i      (streaming_rd_req_i),
-        .axis_read_rsp_o      (streaming_rd_rsp_o),
-        .axi_write_req_o      ( /* axi_write_req */   ),
-        .axi_write_rsp_i      ( /* axi_write_rsp */   ),
-        .axis_write_req_o     (streaming_wr_req_o),
-        .axis_write_rsp_i     (streaming_wr_rsp_i),
-        .busy_o               ( busy            )
-    );
+    .CombinedShifter      ( CombinedShifter      ),
+    .DataWidth            ( DataWidth            ),
+    .AddrWidth            ( AddrWidth            ),
+    .AxiIdWidth           ( AxiIdWidth           ),
+    .UserWidth            ( UserWidth            ),
+    .TFLenWidth           ( TFLenWidth           ),
+    .MaskInvalidData      ( MaskInvalidData      ),
+    .BufferDepth          ( BufferDepth          ),
+    .RAWCouplingAvail     ( RAWCouplingAvail     ),
+    .HardwareLegalizer    ( HardwareLegalizer    ),
+    .RejectZeroTransfers  ( RejectZeroTransfers  ),
+    .ErrorCap             ( ErrorCap             ),
+    .PrintFifoInfo        ( PrintFifoInfo        ),
+    .NumAxInFlight        ( NumAxInFlight        ),
+    .MemSysDepth          ( MemSysDepth          ),
+    .idma_req_t           ( idma_req_t           ),
+    .idma_rsp_t           ( idma_rsp_t           ),
+    .idma_eh_req_t        ( idma_pkg::idma_eh_req_t),
+    .idma_busy_t          ( idma_pkg::idma_busy_t),
+    .axi_req_t ( axi_req_t ),
+    .axi_rsp_t ( axi_rsp_t ),
+    .axis_req_t ( axis_req_t ),
+    .axis_rsp_t ( axis_rsp_t ),
+    .write_meta_channel_t ( write_meta_channel_t ),
+    .read_meta_channel_t  ( read_meta_channel_t  )
+) i_idma_backend  (
+    .clk_i                ( clk_i           ),
+    .rst_ni               ( rst_ni          ),
+    .testmode_i           ( testmode_i      ),
+    .idma_req_i           ( idma_req        ),
+    .req_valid_i          ( req_valid       ),
+    .req_ready_o          ( req_ready       ),
+    .idma_rsp_o           ( idma_rsp        ),
+    .rsp_valid_o          ( rsp_valid       ),
+    .rsp_ready_i          ( rsp_ready       ),
+    .idma_eh_req_i        ( '0              ),
+    .eh_req_valid_i       ( '0              ),
+    .eh_req_ready_o       (                 ),
+    .axi_read_req_o       ( /* axi_read_req */    ),
+    .axi_read_rsp_i       ( /* axi_read_rsp */    ),
+    .axis_read_req_i      (streaming_rd_req_i),
+    .axis_read_rsp_o      (streaming_rd_rsp_o),
+    .axi_write_req_o      ( /* axi_write_req */   ),
+    .axi_write_rsp_i      ( /* axi_write_rsp */   ),
+    .axis_write_req_o     (streaming_wr_req_o),
+    .axis_write_rsp_i     (streaming_wr_rsp_i),
+    .busy_o               ( busy            )
+);
 
 endmodule
