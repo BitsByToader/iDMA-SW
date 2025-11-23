@@ -4,7 +4,7 @@ $ python -m venv .venv # create an environment for the dependencies of the gener
 $ source .venv/bin/activate # go into the environment
 $ pip install -r requirements.txt
 $ make idma_hw_all
-$ exit
+$ deactivate # venv is no longer needed
 ```
 
 Design/testbench files must be listed, depending on their checked out path. To do this using Bender, run the following first in this directory:
