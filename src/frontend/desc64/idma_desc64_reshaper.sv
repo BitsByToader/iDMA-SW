@@ -28,6 +28,11 @@ always_comb begin
         idma_req_o.src_addr               = descriptor_i.src_addr;
         idma_req_o.dst_addr               = descriptor_i.dest_addr;
 
+        // TODO: Assign based on some flag (like: preffered be protocol), or assign this somewehere downstream in the backend?
+        idma_req_o.opt.src_protocol       = idma_pkg::AXI_STREAM;
+        idma_req_o.opt.dst_protocol       = idma_pkg::AXI_STREAM;
+        //
+
         // Current backend only supports one ID
         idma_req_o.opt.axi_id             = descriptor_i.flags[23:16];
         idma_req_o.opt.src.burst          = descriptor_i.flags[2:1];

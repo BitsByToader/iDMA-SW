@@ -60,8 +60,9 @@ module tb_idma_desc64fe_axisbe();
         .DataWidth(64),
         .MaskInvalidData(0),
         .StrbWidth(8),
-        .TFLenWidth(24),
+        .TFLenWidth(32),
         .UserWidth(1),
+        .NSpeculation(0), // TODO: Remove after debugging other behavior!
         .axi_req_t(axi_req_t),
         .axi_rsp_t(axi_resp_t),
         .axis_req_t(axis_req_t),
@@ -107,7 +108,7 @@ module tb_idma_desc64fe_axisbe();
         .NumPorts(1),
         .axi_req_t(axi_req_t),
         .axi_rsp_t(axi_resp_t),
-        .WarnUninitialized(1),
+        .WarnUninitialized(0),
         .UninitializedData("zeros"),
         .ClearErrOnAccess(0),
         .AcqDelay(0),
@@ -136,15 +137,48 @@ module tb_idma_desc64fe_axisbe();
         .mon_r_last_o()
     );
     
+    function void write_mem(input logic[63:0] base, input logic[63:0] data);
+        mem_bank.mem[base]     = data[ 7: 0];
+        mem_bank.mem[base + 1] = data[15: 8];
+        mem_bank.mem[base + 2] = data[23:16];
+        mem_bank.mem[base + 3] = data[31:24];
+        mem_bank.mem[base + 4] = data[39:32];
+        mem_bank.mem[base + 5] = data[47:40];
+        mem_bank.mem[base + 6] = data[55:48];
+        mem_bank.mem[base + 7] = data[63:56];
+    endfunction : write_mem
+    
     initial begin
-        $readmemh("axi_sim.mem", mem_bank.mem);
+        //$readmemh("axi_sim.mem", mem_bank.mem);
+        
+        write_mem(64'h0000000000000000, 64'h0000000000000001);
+        write_mem(64'h0000000000000008, 64'h0000000000000002);
+        write_mem(64'h0000000000000010, 64'h0000000000000003);
+        write_mem(64'h0000000000000018, 64'h0000000000000004);
+        write_mem(64'h0000000000000020, 64'h0000000000000005);
+        write_mem(64'h0000000000000028, 64'h0000000000000006);
+        write_mem(64'h0000000000000030, 64'h0000000000000007);
+        write_mem(64'h0000000000000038, 64'h0000000000000008);
+        write_mem(64'h0000000000000040, 64'h0000000000000009);
+        write_mem(64'h0000000000000048, 64'h000000000000000A);
+        write_mem(64'h0000000000000050, 64'h000000000000000B);
+        write_mem(64'h0000000000000058, 64'h000000000000000C);
+        write_mem(64'h0000000000000060, 64'h000000000000000D);
+        write_mem(64'h0000000000000068, 64'h000000000000000E);
+        write_mem(64'h0000000000000070, 64'h000000000000000F);
+        write_mem(64'h0000000000000078, 64'h0000000000000010);
+        
+        write_mem(64'hf000000000000018, 64'h1000000000000000); // destination addr
+        write_mem(64'hf000000000000010, 64'h0000000000000000); // source addr
+        write_mem(64'hf000000000000008, 64'hFFFFFFFFFFFFFFFF); // next descriptor -> no desc
+        write_mem(64'hf000000000000000, 64'h0000006B_00000080); // 32bit flags | 32bit length
     end
     
     initial begin
         forever begin
             @(posedge clk);
             if ( sim_mem_w_valid ) begin
-                $display("iDMA made request to write to memory for AXIS transfer: ADDR=%0h DATA=%0h", sim_mem_w_addr, sim_mem_w_data);
+                $display("[iDMA][AXI][Master][%0t] Sim Memory written to: ADDR=%0h DATA=%0h", $time, sim_mem_w_addr, sim_mem_w_data);
             end
         end
     end
@@ -153,7 +187,7 @@ module tb_idma_desc64fe_axisbe();
         forever begin
             @(posedge clk);
             if ( sim_mem_r_valid ) begin
-                $display("iDMA made request to read from memory for AXIS transfer: ADDR=%0h DATA=%0h", sim_mem_r_addr, sim_mem_r_data);
+                $display("[iDMA][AXI][Master][%0t] Sim Memory read from: ADDR=%0h DATA=%0h", $time, sim_mem_r_addr, sim_mem_r_data);
             end
         end
     end
@@ -189,12 +223,12 @@ module tb_idma_desc64fe_axisbe();
         
         i_reg_iface_driver.send_write(
             .addr (IDMA_DESC64_DESC_ADDR_OFFSET),
-            .data (0),
+            .data (64'hF000000000000000),
             .strb(8'hff),
             .error(error)
         );
         
-        #100;
+        #2000;
         $finish();
     end
     
@@ -213,7 +247,7 @@ module tb_idma_desc64fe_axisbe();
     ) write_drv = new(write_stream_if);
     
     `AXI_STREAM_ASSIGN_FROM_REQ(write_stream_if, wr_stream_req);
-    `AXI_STREAM_ASSIGN_FROM_RSP(write_stream_if, wr_stream_rsp);
+    `AXI_STREAM_ASSIGN_TO_RSP(wr_stream_rsp, write_stream_if);
     
     AXI_STREAM_BUS_DV #(
         .DataWidth(64),
@@ -230,11 +264,14 @@ module tb_idma_desc64fe_axisbe();
     ) read_drv = new(read_stream_if);
     
     `AXI_STREAM_ASSIGN_TO_REQ(rd_stream_req, read_stream_if);
-    `AXI_STREAM_ASSIGN_TO_RSP(rd_stream_rsp, read_stream_if);
+    `AXI_STREAM_ASSIGN_FROM_RSP(read_stream_if, rd_stream_rsp);
+    
+    logic [63:0] fake_accelerator_data_q [$];
+    logic fake_accelerator_last_q [$];
     
     initial begin
-        read_drv.reset_tx();
         write_drv.reset_rx();
+        
         @(posedge rst);
         
         forever begin
@@ -242,11 +279,40 @@ module tb_idma_desc64fe_axisbe();
             logic last;
             
             write_drv.recv(data, last);
-            $display("Got something from iDMA via AXIS: DATA=%0h LAST=%0h", data, last);
-            repeat (2) @(posedge clk);
-            read_drv.send(data, last);
-            $display("Sent back to iDMA via AXIS: DATA=%0h LAST=%0h", data, last);
+            $display("[iDMA][AXIS][Master][%0t] DUT sent to accelerator: DATA=%0h LAST=%0h", $time, data, last);
+            fake_accelerator_data_q.push_back(data);
+            fake_accelerator_last_q.push_back(last);
         end
+    end
+    
+    initial begin
+        read_drv.reset_tx();
+        
+        @(posedge rst);
+        
+        #500
+        for (logic [63:0] i = 1; i <= 16; i=i+1) begin
+            read_drv.send(i, i == 16);
+        end
+        
+//        forever begin
+//            automatic logic [63:0] r_data;
+//            automatic logic r_last;
+            
+//            if (fake_accelerator_data_q.size() == 0) begin
+//                @(negedge clk);
+//                continue;
+//            end
+            
+//            r_data = fake_accelerator_data_q.pop_front();
+//            r_last = fake_accelerator_last_q.pop_front();
+            
+//            $display("[%0t] Accelerator begins processing data.", $time);
+//            repeat (2) @(posedge clk);
+            
+//            read_drv.send(r_data, r_last);
+//            $display("[iDMA][AXIS][Slave][%0t] DUT received from accelerator: DATA=%0h LAST=%0h", $time, r_data, r_last);
+//        end
     end
     
 endmodule

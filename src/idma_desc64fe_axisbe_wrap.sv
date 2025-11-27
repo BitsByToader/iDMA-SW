@@ -29,7 +29,7 @@ module idma_desc64fe_axisbe_wrap #(
     /// Usually, `NumAxInFlight + BufferDepth`
     parameter int unsigned BackendDepth     = NumAxInFlight + BufferDepth,
     /// With of a transfer: max transfer size is `2**TFLenWidth` bytes
-    parameter int unsigned TFLenWidth       = 32'd24,
+    parameter int unsigned TFLenWidth       = 32'd32,
     /// The depth of the memory system the backend is attached to
     parameter int unsigned MemSysDepth      = 32'd0,
     /// Should both data shifts be done before the dataflow element?
@@ -201,6 +201,12 @@ idma_desc64_top #(
     .irq_o            (irq_o            )
 );
 
+axi_req_t be_axi_rd_req, be_axi_wr_req;
+axi_rsp_t be_axi_rd_rsp, be_axi_wr_rsp;
+
+assign be_axi_rd_rsp = 0;
+assign be_axi_wr_rsp = 0;
+
 
 ///BACKEND AXI///
 idma_backend_rw_axi_rw_axis #(
@@ -242,12 +248,12 @@ idma_backend_rw_axi_rw_axis #(
     .idma_eh_req_i        ( '0              ),
     .eh_req_valid_i       ( '0              ),
     .eh_req_ready_o       (                 ),
-    .axi_read_req_o       ( /* axi_read_req */    ),
-    .axi_read_rsp_i       ( /* axi_read_rsp */    ),
+    .axi_read_req_o       ( be_axi_rd_req   ),
+    .axi_read_rsp_i       ( be_axi_rd_rsp   ),
     .axis_read_req_i      (streaming_rd_req_i),
     .axis_read_rsp_o      (streaming_rd_rsp_o),
-    .axi_write_req_o      ( /* axi_write_req */   ),
-    .axi_write_rsp_i      ( /* axi_write_rsp */   ),
+    .axi_write_req_o      ( be_axi_wr_req  ),
+    .axi_write_rsp_i      ( be_axi_wr_rsp  ),
     .axis_write_req_o     (streaming_wr_req_o),
     .axis_write_rsp_i     (streaming_wr_rsp_i),
     .busy_o               ( busy            )
