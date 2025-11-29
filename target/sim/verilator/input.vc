@@ -647,7 +647,9 @@
 +incdir+/Users/tudor/Developer/iDMA-SW/src/include
 +incdir+/Users/tudor/Developer/iDMA-SW/target/rtl/include
 +incdir+/Users/tudor/Developer/iDMA-SW/test
-/Users/tudor/Developer/iDMA-SW/target/rtl/idma_generated.sv
+/Users/tudor/Developer/iDMA-SW/src/backend/idma_backend_rw_axi_rw_axis.sv
+/Users/tudor/Developer/iDMA-SW/src/backend/idma_legalizer_rw_axi_rw_axis.sv
+/Users/tudor/Developer/iDMA-SW/src/backend/idma_transport_layer_rw_axi_rw_axis.sv
 
 +define+TARGET_IDMA_TEST
 +define+TARGET_RTL

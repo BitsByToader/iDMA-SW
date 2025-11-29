@@ -122,9 +122,17 @@ sources:
       - test/future/idma_tilelink2axi_bridge.sv
 
   # Generated content
-  - target: any(rtl, idma_test, synth, snitch_cluster)
+  # - target: any(rtl, idma_test, synth, snitch_cluster)
+  #  files:
+  #  - target/rtl/idma_generated.sv
+
+  # Permanently add generated content for AXI-Stream iDMA (to e.g. fix bugs)
+  # This repo only cares to offer a driver package for AXIS/AXI iDMA, so it should be okay.
+  - target: any(rtl, idma_test, synth)
     files:
-    - target/rtl/idma_generated.sv
+      - src/backend/idma_backend_rw_axi_rw_axis.sv
+      - src/backend/idma_legalizer_rw_axi_rw_axis.sv
+      - src/backend/idma_transport_layer_rw_axi_rw_axis.sv
 
   # Target wrapper
   - target: rtl
