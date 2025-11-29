@@ -292,7 +292,7 @@ module idma_backend_rw_axi_rw_axis #(
     logic aw_valid_dp, ar_valid_dp;
 
     // Ax request from R-AW coupler to datapath
-    write_meta_channel_tagged_t aw_req_dp;
+    write_meta_channel_tagged_t aw_req_dp, aw_req_dp_axis_bpass;
 
     // Ax request from the decoupling stage to the datapath
     read_meta_channel_tagged_t ar_req_dp;
@@ -613,7 +613,7 @@ module idma_backend_rw_axi_rw_axis #(
         .ar_req_i        ( ar_req_dp            ),
         .ar_valid_i      ( ar_valid_dp          ),
         .ar_ready_o      ( ar_ready_dp          ),
-        .aw_req_i        ( aw_req_dp            ),
+        .aw_req_i        ( aw_req_dp_axis_bpass ),
         .aw_valid_i      ( aw_valid_dp          ),
         .aw_ready_o      ( aw_ready_dp          ),
         .dp_poison_i     ( dp_poison            ),
@@ -658,6 +658,9 @@ module idma_backend_rw_axi_rw_axis #(
             .valid_o   ( aw_valid_dp                ),
             .ready_i   ( aw_ready_dp && aw_valid_dp )
         );
+        
+        assign aw_req_dp_axis_bpass.dst_protocol = w_meta_req_tagged.dst_protocol;
+        assign aw_req_dp_axis_bpass.aw_req = (aw_req_dp_axis_bpass.dst_protocol == idma_pkg::AXI_STREAM) ? w_meta_req_tagged.aw_req : aw_req_dp.aw_req;
 
         // no unit: not busy
         assign busy_o.raw_coupler_busy = 1'b0;
