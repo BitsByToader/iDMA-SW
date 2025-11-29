@@ -106,8 +106,8 @@ module idma_desc64fe_axisbe_wrap #(
     output axis_rsp_t              streaming_rd_rsp_o,
 
     // read/write axi master interface used for backend connection
-    axi_req_t master_be_axi_req_o,
-    axi_rsp_t master_be_axi_rsp_i,
+    output axi_req_t master_be_axi_req_o,
+    input  axi_rsp_t master_be_axi_rsp_i,
 
     /// Event: irq
     output logic                  irq_o
