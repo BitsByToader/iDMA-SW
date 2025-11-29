@@ -141,7 +141,6 @@ module tb_idma_desc64fe_axisbe();
         .AddrWidth(64),
         .AxiIdWidth(3),
         .DataWidth(64),
-        .MaskInvalidData(0),
         .StrbWidth(8),
         .TFLenWidth(32),
         .UserWidth(1),
