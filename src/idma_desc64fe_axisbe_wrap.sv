@@ -105,6 +105,10 @@ module idma_desc64fe_axisbe_wrap #(
     input  axis_req_t              streaming_rd_req_i,
     output axis_rsp_t              streaming_rd_rsp_o,
 
+    // read/write axi master interface used for backend connection
+    axi_req_t master_be_axi_req_o,
+    axi_rsp_t master_be_axi_rsp_i,
+
     /// Event: irq
     output logic                  irq_o
 );
@@ -204,10 +208,6 @@ idma_desc64_top #(
 axi_req_t be_axi_rd_req, be_axi_wr_req;
 axi_rsp_t be_axi_rd_rsp, be_axi_wr_rsp;
 
-assign be_axi_rd_rsp = 0;
-assign be_axi_wr_rsp = 0;
-
-
 ///BACKEND AXI///
 idma_backend_rw_axi_rw_axis #(
     .CombinedShifter      ( CombinedShifter      ),
@@ -257,6 +257,23 @@ idma_backend_rw_axi_rw_axis #(
     .axis_write_req_o     (streaming_wr_req_o),
     .axis_write_rsp_i     (streaming_wr_rsp_i),
     .busy_o               ( busy            )
+);
+
+axi_rw_join #(
+    .axi_req_t(axi_req_t),
+    .axi_resp_t(axi_rsp_t)
+) be_join (
+    .clk_i              ( clk_i                 ),
+    .rst_ni             ( rst_ni                ),
+    
+    .slv_read_req_i     ( be_axi_rd_req         ),
+    .slv_read_resp_o     ( be_axi_rd_rsp         ),
+    
+    .slv_write_req_i    ( be_axi_wr_req         ),
+    .slv_write_resp_o    ( be_axi_wr_rsp         ),
+    
+    .mst_req_o          ( master_be_axi_req_o   ),
+    .mst_resp_i          ( master_be_axi_rsp_i   )
 );
 
 endmodule

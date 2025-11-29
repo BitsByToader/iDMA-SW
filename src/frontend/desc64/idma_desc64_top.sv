@@ -111,7 +111,9 @@ typedef struct packed {
     ///                bit 2: cache read alloc
     ///                bit 3: cache write alloc
     /// bits 23:16     AXI ID used for the transfer
-    /// bits 31:24     unused/reserved
+    /// bits 26:24     Protocol used for SRC-to-DMA transfer. See idma_pkg for values.
+    /// bits 29:27     Protocol used for DMA-to-DST transfer. See idma_pkg for values.
+    /// bits 31:30     unused/reserved
     logic [31:0] flags;
     /// length of request in bytes
     logic [31:0] length;

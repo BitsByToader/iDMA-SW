@@ -11,7 +11,105 @@ import axi_test::*;
 import reg_test::reg_driver;
 import idma_desc64_reg_pkg::*;
 
-//typedef class reg_driver;
+typedef logic [63:0] data_t;
+typedef logic [63:0] addr_t;
+typedef logic [ 7:0] strb_t;
+typedef logic [ 2:0] axis_id_t;
+typedef logic [ 2:0] axi_id_t;
+typedef logic [23:0] tf_len_t;
+typedef logic [ 0:0] user_t;
+
+`REG_BUS_TYPEDEF_ALL(reg, /* addr */ addr_t, /* data */ data_t, /* strobe */ strb_t)
+`AXI_TYPEDEF_ALL(axi, /* addr */ addr_t, /* id */ axi_id_t, /* data */ data_t, /* strb */ strb_t, /* user */ user_t)
+
+`AXI_STREAM_TYPEDEF_S_CHAN_T(axis_t_chan_t, data_t, strb_t, strb_t, axis_id_t, axis_id_t, user_t)
+`AXI_STREAM_TYPEDEF_REQ_T(axis_req_t, axis_t_chan_t)
+`AXI_STREAM_TYPEDEF_RSP_T(axis_rsp_t)
+
+module axi_sim_mem_with_print #(
+    parameter int AddrWidth = 64,
+    parameter int DataWidth = 64,
+    parameter int UserWidth = 1,
+    parameter int IdWidth = 3,
+    parameter string Name = ""
+) (
+    input logic clk_i,
+    input logic rst_ni,
+    
+    input axi_req_t axi_req_i,
+    output axi_resp_t axi_rsp_o
+);
+    
+    logic sim_mem_w_valid, sim_mem_r_valid;
+    logic [63:0] sim_mem_w_addr, sim_mem_w_data;
+    logic [63:0] sim_mem_r_addr, sim_mem_r_data;
+    
+    axi_sim_mem #(
+        .AddrWidth(AddrWidth),
+        .DataWidth(DataWidth),
+        .UserWidth(1),
+        .IdWidth(3),
+        .NumPorts(1),
+        .axi_req_t(axi_req_t),
+        .axi_rsp_t(axi_resp_t),
+        .WarnUninitialized(0),
+        .UninitializedData("zeros"),
+        .ClearErrOnAccess(0),
+        .AcqDelay(0),
+        .ApplDelay(1)
+    ) bank (
+        .clk_i(clk_i),
+        .rst_ni(rst_ni),
+        
+        .axi_req_i(axi_req_i),
+        .axi_rsp_o(axi_rsp_o),
+    
+        .mon_w_valid_o(sim_mem_w_valid),
+        .mon_w_addr_o(sim_mem_w_addr),
+        .mon_w_data_o(sim_mem_w_data),
+        .mon_w_id_o(),
+        .mon_w_user_o(),
+        .mon_w_beat_count_o(),
+        .mon_w_last_o(),
+        
+        .mon_r_valid_o(sim_mem_r_valid),
+        .mon_r_addr_o(sim_mem_r_addr),
+        .mon_r_data_o(sim_mem_r_data),
+        .mon_r_id_o(),
+        .mon_r_user_o(),
+        .mon_r_beat_count_o(),
+        .mon_r_last_o()
+    );
+    
+    initial begin
+        forever begin
+            @(posedge clk_i);
+            if ( sim_mem_w_valid ) begin
+                $display("[%s][AXI][WR][%0t] Saw Write: ADDR=%0h DATA=%0h", Name, $time, sim_mem_w_addr, sim_mem_w_data);
+            end
+        end
+    end
+    
+    initial begin
+        forever begin
+            @(posedge clk_i);
+            if ( sim_mem_r_valid ) begin
+                $display("[%s][AXI][RD][%0t] Saw Read: ADDR=%0h DATA=%0h", Name, $time, sim_mem_r_addr, sim_mem_r_data);
+            end
+        end
+    end
+endmodule
+
+function void write_mem(ref logic [7:0] mem[logic [63:0]], input logic[63:0] base, input logic[63:0] data);
+    mem[base]     = data[ 7: 0];
+    mem[base + 1] = data[15: 8];
+    mem[base + 2] = data[23:16];
+    mem[base + 3] = data[31:24];
+    mem[base + 4] = data[39:32];
+    mem[base + 5] = data[47:40];
+    mem[base + 6] = data[55:48];
+    mem[base + 7] = data[63:56];
+endfunction : write_mem
 
 module tb_idma_desc64fe_axisbe();
     logic clk, rst;
@@ -32,25 +130,10 @@ module tb_idma_desc64fe_axisbe();
         $dumpvars();
     end
     
-    typedef logic [63:0] data_t;
-    typedef logic [63:0] addr_t;
-    typedef logic [ 7:0] strb_t;
-    typedef logic [ 2:0] axis_id_t;
-    typedef logic [ 2:0] axi_id_t;
-    typedef logic [23:0] tf_len_t;
-    typedef logic [ 0:0] user_t;
-    
-    `REG_BUS_TYPEDEF_ALL(reg, /* addr */ addr_t, /* data */ data_t, /* strobe */ strb_t)
-    `AXI_TYPEDEF_ALL(axi, /* addr */ addr_t, /* id */ axi_id_t, /* data */ data_t, /* strb */ strb_t, /* user */ user_t)
-    
-    `AXI_STREAM_TYPEDEF_S_CHAN_T(axis_t_chan_t, data_t, strb_t, strb_t, axis_id_t, axis_id_t, user_t)
-    `AXI_STREAM_TYPEDEF_REQ_T(axis_req_t, axis_t_chan_t)
-    `AXI_STREAM_TYPEDEF_RSP_T(axis_rsp_t)
-    
     reg_req_t bus_req;
     reg_rsp_t bus_rsp;
-    axi_req_t master_req;
-    axi_resp_t master_rsp;
+    axi_req_t desc_master_req, be_axi_req;
+    axi_resp_t desc_master_rsp, be_axi_rsp;
     axis_req_t wr_stream_req, rd_stream_req;
     axis_rsp_t wr_stream_rsp, rd_stream_rsp;
     
@@ -62,7 +145,7 @@ module tb_idma_desc64fe_axisbe();
         .StrbWidth(8),
         .TFLenWidth(32),
         .UserWidth(1),
-        .NSpeculation(0), // TODO: Remove after debugging other behavior!
+        .NSpeculation(0), // TODO: Remove after debug!
         .axi_req_t(axi_req_t),
         .axi_rsp_t(axi_resp_t),
         .axis_req_t(axis_req_t),
@@ -87,109 +170,59 @@ module tb_idma_desc64fe_axisbe();
         .slave_req_i(bus_req),
         .slave_rsp_o(bus_rsp),
         
-        .master_fe_req_o(master_req),
-        .master_fe_rsp_i(master_rsp),
+        .master_fe_req_o(desc_master_req),
+        .master_fe_rsp_i(desc_master_rsp),
         
         .streaming_wr_req_o(wr_stream_req),
         .streaming_wr_rsp_i(wr_stream_rsp),
         .streaming_rd_req_i(rd_stream_req),
-        .streaming_rd_rsp_o(rd_stream_rsp)
+        .streaming_rd_rsp_o(rd_stream_rsp),
+        
+        .master_be_axi_req_o(be_axi_req),
+        .master_be_axi_rsp_i(be_axi_rsp)
     );
     
-    logic sim_mem_w_valid, sim_mem_r_valid;
-    logic [63:0] sim_mem_w_addr, sim_mem_w_data;
-    logic [63:0] sim_mem_r_addr, sim_mem_r_data;
-    
-    axi_sim_mem #(
-        .AddrWidth(64),
-        .DataWidth(64),
-        .UserWidth(1),
-        .IdWidth(3),
-        .NumPorts(1),
-        .axi_req_t(axi_req_t),
-        .axi_rsp_t(axi_resp_t),
-        .WarnUninitialized(0),
-        .UninitializedData("zeros"),
-        .ClearErrOnAccess(0),
-        .AcqDelay(0),
-        .ApplDelay(1)
-    ) mem_bank (
+    axi_sim_mem_with_print #(.Name("DESC_MEM")) desc_mem (
         .clk_i(clk),
         .rst_ni(rst),
-        
-        .axi_req_i(master_req),
-        .axi_rsp_o(master_rsp),
-    
-        .mon_w_valid_o(sim_mem_w_valid),
-        .mon_w_addr_o(sim_mem_w_addr),
-        .mon_w_data_o(sim_mem_w_data),
-        .mon_w_id_o(),
-        .mon_w_user_o(),
-        .mon_w_beat_count_o(),
-        .mon_w_last_o(),
-        
-        .mon_r_valid_o(sim_mem_r_valid),
-        .mon_r_addr_o(sim_mem_r_addr),
-        .mon_r_data_o(sim_mem_r_data),
-        .mon_r_id_o(),
-        .mon_r_user_o(),
-        .mon_r_beat_count_o(),
-        .mon_r_last_o()
+        .axi_req_i(desc_master_req),
+        .axi_rsp_o(desc_master_rsp)
     );
     
-    function void write_mem(input logic[63:0] base, input logic[63:0] data);
-        mem_bank.mem[base]     = data[ 7: 0];
-        mem_bank.mem[base + 1] = data[15: 8];
-        mem_bank.mem[base + 2] = data[23:16];
-        mem_bank.mem[base + 3] = data[31:24];
-        mem_bank.mem[base + 4] = data[39:32];
-        mem_bank.mem[base + 5] = data[47:40];
-        mem_bank.mem[base + 6] = data[55:48];
-        mem_bank.mem[base + 7] = data[63:56];
-    endfunction : write_mem
+    axi_sim_mem_with_print #(.Name("BE_MEM")) be_mem (
+        .clk_i(clk),
+        .rst_ni(rst),
+        .axi_req_i(be_axi_req),
+        .axi_rsp_o(be_axi_rsp)
+    );
     
     initial begin
-        //$readmemh("axi_sim.mem", mem_bank.mem);
+        write_mem(be_mem.bank.mem, 64'h0000000000000000, 64'h0000000000000001);
+        write_mem(be_mem.bank.mem, 64'h0000000000000008, 64'h0000000000000002);
+        write_mem(be_mem.bank.mem, 64'h0000000000000010, 64'h0000000000000003);
+        write_mem(be_mem.bank.mem, 64'h0000000000000018, 64'h0000000000000004);
+        write_mem(be_mem.bank.mem, 64'h0000000000000020, 64'h0000000000000005);
+        write_mem(be_mem.bank.mem, 64'h0000000000000028, 64'h0000000000000006);
+        write_mem(be_mem.bank.mem, 64'h0000000000000030, 64'h0000000000000007);
+        write_mem(be_mem.bank.mem, 64'h0000000000000038, 64'h0000000000000008);
+        write_mem(be_mem.bank.mem, 64'h0000000000000040, 64'h0000000000000009);
+        write_mem(be_mem.bank.mem, 64'h0000000000000048, 64'h000000000000000A);
+        write_mem(be_mem.bank.mem, 64'h0000000000000050, 64'h000000000000000B);
+        write_mem(be_mem.bank.mem, 64'h0000000000000058, 64'h000000000000000C);
+        write_mem(be_mem.bank.mem, 64'h0000000000000060, 64'h000000000000000D);
+        write_mem(be_mem.bank.mem, 64'h0000000000000068, 64'h000000000000000E);
+        write_mem(be_mem.bank.mem, 64'h0000000000000070, 64'h000000000000000F);
+        write_mem(be_mem.bank.mem, 64'h0000000000000078, 64'h0000000000000010);
         
-        write_mem(64'h0000000000000000, 64'h0000000000000001);
-        write_mem(64'h0000000000000008, 64'h0000000000000002);
-        write_mem(64'h0000000000000010, 64'h0000000000000003);
-        write_mem(64'h0000000000000018, 64'h0000000000000004);
-        write_mem(64'h0000000000000020, 64'h0000000000000005);
-        write_mem(64'h0000000000000028, 64'h0000000000000006);
-        write_mem(64'h0000000000000030, 64'h0000000000000007);
-        write_mem(64'h0000000000000038, 64'h0000000000000008);
-        write_mem(64'h0000000000000040, 64'h0000000000000009);
-        write_mem(64'h0000000000000048, 64'h000000000000000A);
-        write_mem(64'h0000000000000050, 64'h000000000000000B);
-        write_mem(64'h0000000000000058, 64'h000000000000000C);
-        write_mem(64'h0000000000000060, 64'h000000000000000D);
-        write_mem(64'h0000000000000068, 64'h000000000000000E);
-        write_mem(64'h0000000000000070, 64'h000000000000000F);
-        write_mem(64'h0000000000000078, 64'h0000000000000010);
+        write_mem(desc_mem.bank.mem, 64'hf000000000000000, 64'h2800006B_00000080); // 32bit flags | 32bit length (in bytes)
+        write_mem(desc_mem.bank.mem, 64'hf000000000000008, 64'hf000000000000020); // next descriptor
+        write_mem(desc_mem.bank.mem, 64'hf000000000000010, 64'h0000000000000000); // source addr
+        write_mem(desc_mem.bank.mem, 64'hf000000000000018, 64'hFFFFFFFFFFFFFFFF); // destination addr, destination is AXI-Stream
         
-        write_mem(64'hf000000000000018, 64'h1000000000000000); // destination addr
-        write_mem(64'hf000000000000010, 64'h0000000000000000); // source addr
-        write_mem(64'hf000000000000008, 64'hFFFFFFFFFFFFFFFF); // next descriptor -> no desc
-        write_mem(64'hf000000000000000, 64'h0000006B_00000080); // 32bit flags | 32bit length
-    end
-    
-    initial begin
-        forever begin
-            @(posedge clk);
-            if ( sim_mem_w_valid ) begin
-                $display("[iDMA][AXI][Master][%0t] Sim Memory written to: ADDR=%0h DATA=%0h", $time, sim_mem_w_addr, sim_mem_w_data);
-            end
-        end
-    end
-    
-    initial begin
-        forever begin
-            @(posedge clk);
-            if ( sim_mem_r_valid ) begin
-                $display("[iDMA][AXI][Master][%0t] Sim Memory read from: ADDR=%0h DATA=%0h", $time, sim_mem_r_addr, sim_mem_r_data);
-            end
-        end
+        write_mem(desc_mem.bank.mem, 64'hf000000000000020, 64'h0500006B_00000080); // 32bit flags | 32bit length (in bytes)
+        write_mem(desc_mem.bank.mem, 64'hf000000000000028, 64'hFFFFFFFFFFFFFFFF); // next descriptor -> no desc
+        write_mem(desc_mem.bank.mem, 64'hf000000000000030, 64'hFFFFFFFFFFFFFFFF); // source addr -> source is AXI-Stream
+        write_mem(desc_mem.bank.mem, 64'hf000000000000038, 64'h1000000000000000); // destination addr
     end
     
     REG_BUS #(
@@ -290,29 +323,21 @@ module tb_idma_desc64fe_axisbe();
         
         @(posedge rst);
         
-        #500
-        for (logic [63:0] i = 1; i <= 16; i=i+1) begin
-            read_drv.send(i, i == 16);
+        forever begin
+            automatic logic [63:0] r_data;
+            automatic logic r_last;
+            
+            if (fake_accelerator_data_q.size() == 0) begin
+                @(posedge clk);
+                continue;
+            end
+            
+            r_data = fake_accelerator_data_q.pop_front();
+            r_last = fake_accelerator_last_q.pop_front();
+            
+            read_drv.send(r_data, r_last);
+            $display("[iDMA][AXIS][Slave][%0t] DUT received from accelerator: DATA=%0h LAST=%0h", $time, r_data, r_last);
         end
-        
-//        forever begin
-//            automatic logic [63:0] r_data;
-//            automatic logic r_last;
-            
-//            if (fake_accelerator_data_q.size() == 0) begin
-//                @(negedge clk);
-//                continue;
-//            end
-            
-//            r_data = fake_accelerator_data_q.pop_front();
-//            r_last = fake_accelerator_last_q.pop_front();
-            
-//            $display("[%0t] Accelerator begins processing data.", $time);
-//            repeat (2) @(posedge clk);
-            
-//            read_drv.send(r_data, r_last);
-//            $display("[iDMA][AXIS][Slave][%0t] DUT received from accelerator: DATA=%0h LAST=%0h", $time, r_data, r_last);
-//        end
     end
     
 endmodule
