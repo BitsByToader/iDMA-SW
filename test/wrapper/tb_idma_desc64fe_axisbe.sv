@@ -267,14 +267,14 @@ module tb_idma_desc64fe_axisbe();
     AXI_STREAM_BUS_DV #(
         .DataWidth(64),
         .IdWidth(3),
-        .DestWidth(1),
+        .DestWidth(3),
         .UserWidth(1)
     ) write_stream_if(clk);
     
     axi_stream_driver #(
         .DataWidth(64),
         .IdWidth(3),
-        .DestWidth(1),
+        .DestWidth(3),
         .UserWidth(1)
     ) write_drv = new(write_stream_if);
     
@@ -284,14 +284,14 @@ module tb_idma_desc64fe_axisbe();
     AXI_STREAM_BUS_DV #(
         .DataWidth(64),
         .IdWidth(3),
-        .DestWidth(1),
+        .DestWidth(3),
         .UserWidth(1)
     ) read_stream_if(clk);
     
     axi_stream_driver #(
         .DataWidth(64),
         .IdWidth(3),
-        .DestWidth(1),
+        .DestWidth(3),
         .UserWidth(1)
     ) read_drv = new(read_stream_if);
     
