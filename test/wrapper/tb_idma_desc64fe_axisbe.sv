@@ -55,8 +55,8 @@ module axi_sim_mem_with_print #(
         .WarnUninitialized(0),
         .UninitializedData("zeros"),
         .ClearErrOnAccess(0),
-        .AcqDelay(0),
-        .ApplDelay(1)
+        .AcqDelay(1ns),
+        .ApplDelay(0)
     ) bank (
         .clk_i(clk_i),
         .rst_ni(rst_ni),
@@ -196,32 +196,43 @@ module tb_idma_desc64fe_axisbe();
     );
     
     initial begin
-        write_mem(be_mem.bank.mem, 64'h0000000000000000, 64'h0000000000000001);
-        write_mem(be_mem.bank.mem, 64'h0000000000000008, 64'h0000000000000002);
-        write_mem(be_mem.bank.mem, 64'h0000000000000010, 64'h0000000000000003);
-        write_mem(be_mem.bank.mem, 64'h0000000000000018, 64'h0000000000000004);
-        write_mem(be_mem.bank.mem, 64'h0000000000000020, 64'h0000000000000005);
-        write_mem(be_mem.bank.mem, 64'h0000000000000028, 64'h0000000000000006);
-        write_mem(be_mem.bank.mem, 64'h0000000000000030, 64'h0000000000000007);
-        write_mem(be_mem.bank.mem, 64'h0000000000000038, 64'h0000000000000008);
-        write_mem(be_mem.bank.mem, 64'h0000000000000040, 64'h0000000000000009);
-        write_mem(be_mem.bank.mem, 64'h0000000000000048, 64'h000000000000000A);
-        write_mem(be_mem.bank.mem, 64'h0000000000000050, 64'h000000000000000B);
-        write_mem(be_mem.bank.mem, 64'h0000000000000058, 64'h000000000000000C);
-        write_mem(be_mem.bank.mem, 64'h0000000000000060, 64'h000000000000000D);
-        write_mem(be_mem.bank.mem, 64'h0000000000000068, 64'h000000000000000E);
-        write_mem(be_mem.bank.mem, 64'h0000000000000070, 64'h000000000000000F);
-        write_mem(be_mem.bank.mem, 64'h0000000000000078, 64'h0000000000000010);
+        write_mem(be_mem.bank.mem, 64'h1000000000000000, 64'h0000000000000001);
+        write_mem(be_mem.bank.mem, 64'h1000000000000008, 64'h0000000000000002);
+        write_mem(be_mem.bank.mem, 64'h1000000000000010, 64'h0000000000000003);
+        write_mem(be_mem.bank.mem, 64'h1000000000000018, 64'h0000000000000004);
+        write_mem(be_mem.bank.mem, 64'h1000000000000020, 64'h0000000000000005);
+        write_mem(be_mem.bank.mem, 64'h1000000000000028, 64'h0000000000000006);
+        write_mem(be_mem.bank.mem, 64'h1000000000000030, 64'h0000000000000007);
+        write_mem(be_mem.bank.mem, 64'h1000000000000038, 64'h0000000000000008);
+        write_mem(be_mem.bank.mem, 64'h1000000000000040, 64'h0000000000000009);
+        write_mem(be_mem.bank.mem, 64'h1000000000000048, 64'h000000000000000A);
+        write_mem(be_mem.bank.mem, 64'h1000000000000050, 64'h000000000000000B);
+        write_mem(be_mem.bank.mem, 64'h1000000000000058, 64'h000000000000000C);
+        write_mem(be_mem.bank.mem, 64'h1000000000000060, 64'h000000000000000D);
+        write_mem(be_mem.bank.mem, 64'h1000000000000068, 64'h000000000000000E);
+        write_mem(be_mem.bank.mem, 64'h1000000000000070, 64'h000000000000000F);
+        write_mem(be_mem.bank.mem, 64'h1000000000000078, 64'h0000000000000010);
         
+        
+        // AXI to AXI-Stream transfer
         write_mem(desc_mem.bank.mem, 64'hf000000000000000, 64'h2800006B_00000080); // 32bit flags | 32bit length (in bytes)
         write_mem(desc_mem.bank.mem, 64'hf000000000000008, 64'hf000000000000020); // next descriptor
-        write_mem(desc_mem.bank.mem, 64'hf000000000000010, 64'h0000000000000000); // source addr
-        write_mem(desc_mem.bank.mem, 64'hf000000000000018, 64'hFFFFFFFFFFFFFFFF); // destination addr, destination is AXI-Stream
+        write_mem(desc_mem.bank.mem, 64'hf000000000000010, 64'h1000000000000000); // source addr
+        write_mem(desc_mem.bank.mem, 64'hf000000000000018, 64'h0000000000000000); // destination addr, destination is AXI-Stream
         
+        // AXI-Stream to AXI transfer
         write_mem(desc_mem.bank.mem, 64'hf000000000000020, 64'h0500006B_00000080); // 32bit flags | 32bit length (in bytes)
         write_mem(desc_mem.bank.mem, 64'hf000000000000028, 64'hFFFFFFFFFFFFFFFF); // next descriptor -> no desc
-        write_mem(desc_mem.bank.mem, 64'hf000000000000030, 64'hFFFFFFFFFFFFFFFF); // source addr -> source is AXI-Stream
-        write_mem(desc_mem.bank.mem, 64'hf000000000000038, 64'h1000000000000000); // destination addr
+        write_mem(desc_mem.bank.mem, 64'hf000000000000030, 64'h0000000000000000); // source addr -> source is AXI-Stream
+        write_mem(desc_mem.bank.mem, 64'hf000000000000038, 64'h2000000000000000); // destination addr
+        
+        /*
+        // AXI to AXI transfer
+        write_mem(desc_mem.bank.mem, 64'hf000000000000000, 64'h0000006B_00000080); // 32bit flags | 32bit length (in bytes)
+        write_mem(desc_mem.bank.mem, 64'hf000000000000008, 64'hFFFFFFFFFFFFFFFF); // next descriptor
+        write_mem(desc_mem.bank.mem, 64'hf000000000000010, 64'h0000000000000000); // source addr
+        write_mem(desc_mem.bank.mem, 64'hf000000000000018, 64'H1000000000000000); // destination addr, destination is AXI-Stream
+        */
     end
     
     REG_BUS #(
@@ -275,7 +286,8 @@ module tb_idma_desc64fe_axisbe();
         .DataWidth(64),
         .IdWidth(3),
         .DestWidth(1),
-        .UserWidth(1)
+        .UserWidth(1),
+        .TestTime(1ns)
     ) write_drv = new(write_stream_if);
     
     `AXI_STREAM_ASSIGN_FROM_REQ(write_stream_if, wr_stream_req);
@@ -292,7 +304,8 @@ module tb_idma_desc64fe_axisbe();
         .DataWidth(64),
         .IdWidth(3),
         .DestWidth(1),
-        .UserWidth(1)
+        .UserWidth(1),
+        .TestTime(1ns)
     ) read_drv = new(read_stream_if);
     
     `AXI_STREAM_ASSIGN_TO_REQ(rd_stream_req, read_stream_if);
@@ -311,7 +324,7 @@ module tb_idma_desc64fe_axisbe();
             logic last;
             
             write_drv.recv(data, last);
-            $display("[iDMA][AXIS][Master][%0t] DUT sent to accelerator: DATA=%0h LAST=%0h", $time, data, last);
+            $display("[iDMA][AXI-S][Master][%0t] DUT sent to accelerator: DATA=%0h LAST=%0h", $time, data, last);
             fake_accelerator_data_q.push_back(data);
             fake_accelerator_last_q.push_back(last);
         end
@@ -334,8 +347,13 @@ module tb_idma_desc64fe_axisbe();
             r_data = fake_accelerator_data_q.pop_front();
             r_last = fake_accelerator_last_q.pop_front();
             
+            //$display("[iDMA][AXI-S][Slave][%0t] Before send: DATA=%0h LAST=%0h", $time, r_data, r_last);
             read_drv.send(r_data, r_last);
-            $display("[iDMA][AXIS][Slave][%0t] DUT received from accelerator: DATA=%0h LAST=%0h", $time, r_data, r_last);
+            $display("[iDMA][AXI-S][Slave][%0t] Accelerator sent to DUT: DATA=%0h LAST=%0h", $time, r_data, r_last);
+        
+            //$display("[iDMA][AXI-S][Slave][%0t] Queue data:", $time);
+            //foreach(fake_accelerator_data_q[i])
+            //    $display("queue[%0d] = %0d", i, fake_accelerator_data_q[i]);
         end
     end
     
