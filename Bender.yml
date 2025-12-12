@@ -138,6 +138,7 @@ sources:
   - target: rtl
     files:
       - src/idma_desc64fe_axisbe_wrap.sv
+      - src/idma_desc64fe_axisbe_synth.sv
       
   # Test wrapper
   - target: idma_test

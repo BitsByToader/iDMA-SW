@@ -87,16 +87,13 @@ module idma_desc64fe_axisbe_wrap #(
     input  logic [AxiIdWidth-1:0] axi_ar_id_i        ,
     /// ID to be used by the write channel
     input  logic [AxiIdWidth-1:0] axi_aw_id_i        ,
-    /// regbus interface
-    /// slave pair
+    /// AXI4 (slave) interface used for reg access.
     /// The slave interface exposes two registers: One address register to
     /// write a descriptor address to process and a status register that
     /// exposes whether the DMA is busy on bit 0 and whether FIFOs are full
     /// on bit 1.
-    /// master request
-    input  reg_req_t              slave_req_i       ,
-    /// master response
-    output reg_rsp_t              slave_rsp_o       ,
+    input  axi_req_t              slave_fe_req_i,
+    output axi_rsp_t              slave_fe_rsp_o,
 
     // write axi stream interface used for backend connection
     output axis_req_t              streaming_wr_req_o,
@@ -165,11 +162,31 @@ logic rsp_ready;
 // busy signal
 idma_pkg::idma_busy_t busy;
 
- // AXI4+ATOP request and response
-// axi_req_t axi_read_req, axi_write_req, axi_req, axi_req_mem;
-// axi_rsp_t axi_read_rsp, axi_write_rsp, axi_rsp, axi_rsp_mem;
-
 ///FRONT END AXI///
+reg_req_t fe_reg_req;
+reg_rsp_t fe_reg_rsp;
+
+axi_to_reg_v2 #(
+    .AxiAddrWidth   ( AddrWidth         ),
+    .AxiDataWidth   ( DataWidth         ),
+    .AxiIdWidth     ( AxiIdWidth        ),
+    .AxiUserWidth   ( UserWidth         ),
+    .RegDataWidth   ( DataWidth         ),
+    .axi_req_t      ( axi_req_t         ),
+    .axi_rsp_t      ( axi_rsp_t         ),
+    .reg_req_t      ( reg_req_t         ),
+    .reg_rsp_t      ( reg_rsp_t         )
+) axi_to_reg (
+    .clk_i          ( clk_i             ),
+    .rst_ni         ( rst_ni            ),
+    .axi_req_i      ( slave_fe_req_i    ),
+    .axi_rsp_o      ( slave_fe_rsp_o    ),
+    .reg_req_o      ( fe_reg_req        ),
+    .reg_rsp_i      ( fe_reg_rsp        ),
+    .reg_id_o       ( /*NOT USED*/      ),
+    .busy_o         ( /*NOT USED*/      )
+);
+
 idma_desc64_top #(
     .AddrWidth        ( AddrWidth        ),
     .DataWidth        ( DataWidth        ),
@@ -193,8 +210,8 @@ idma_desc64_top #(
     .master_rsp_i     (master_fe_rsp_i ),
     .axi_ar_id_i      (axi_ar_id_i      ),
     .axi_aw_id_i      (axi_aw_id_i      ),
-    .slave_req_i      (slave_req_i      ),
-    .slave_rsp_o      (slave_rsp_o      ),
+    .slave_req_i      (fe_reg_req       ),
+    .slave_rsp_o      (fe_reg_rsp       ),
     .idma_req_o       (idma_req         ),
     .idma_req_valid_o (req_valid        ),
     .idma_req_ready_i (req_ready        ),

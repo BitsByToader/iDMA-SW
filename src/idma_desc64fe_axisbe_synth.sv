@@ -1,4 +1,5 @@
 `include "register_interface/typedef.svh"
+`include "register_interface/assign.svh"
 `include "idma/typedef.svh"
 `include "axi/typedef.svh"
 `include "axi/assign.svh"
@@ -7,6 +8,7 @@
 
 import axi_stream_test::*;
 import axi_test::*;
+import reg_test::reg_driver;
 import idma_desc64_reg_pkg::*;
 
 typedef logic [63:0] data_t;
@@ -98,7 +100,7 @@ module axi_sim_mem_with_print #(
     end
 endmodule
 
-function automatic void write_mem(ref logic [7:0] mem[logic [63:0]], input logic[63:0] base, input logic[63:0] data);
+function void write_mem(ref logic [7:0] mem[logic [63:0]], input logic[63:0] base, input logic[63:0] data);
     mem[base]     = data[ 7: 0];
     mem[base + 1] = data[15: 8];
     mem[base + 2] = data[23:16];
@@ -128,8 +130,8 @@ module tb_idma_desc64fe_axisbe();
         $dumpvars();
     end
     
-    axi_req_t fe_reg_req;
-    axi_resp_t fe_reg_rsp;
+    reg_req_t bus_req;
+    reg_rsp_t bus_rsp;
     axi_req_t desc_master_req, be_axi_req;
     axi_resp_t desc_master_rsp, be_axi_rsp;
     axis_req_t wr_stream_req, rd_stream_req;
@@ -164,8 +166,8 @@ module tb_idma_desc64fe_axisbe();
         
         .irq_o(),
         
-        .slave_fe_req_i(fe_reg_req),
-        .slave_fe_rsp_o(fe_reg_rsp),
+        .slave_req_i(bus_req),
+        .slave_rsp_o(bus_rsp),
         
         .master_fe_req_o(desc_master_req),
         .master_fe_rsp_i(desc_master_rsp),
@@ -229,54 +231,46 @@ module tb_idma_desc64fe_axisbe();
         write_mem(desc_mem.bank.mem, 64'hf000000000000000, 64'h0000006B_00000080); // 32bit flags | 32bit length (in bytes)
         write_mem(desc_mem.bank.mem, 64'hf000000000000008, 64'hFFFFFFFFFFFFFFFF); // next descriptor
         write_mem(desc_mem.bank.mem, 64'hf000000000000010, 64'h0000000000000000); // source addr
-        write_mem(desc_mem.bank.mem, 64'hf000000000000018, 64'H1000000000000000); // destination addr
+        write_mem(desc_mem.bank.mem, 64'hf000000000000018, 64'H1000000000000000); // destination addr, destination is AXI-Stream
         */
     end
-
-    AXI_BUS_DV #(
-        .AXI_ADDR_WIDTH(64),
-        .AXI_DATA_WIDTH(64),
-        .AXI_ID_WIDTH(3),
-        .AXI_USER_WIDTH(1)
-    ) axi_if(clk);
-
-    axi_driver #(
+    
+    REG_BUS #(
+        .ADDR_WIDTH(64),
+        .DATA_WIDTH(64)
+    ) i_reg_iface_bus (clk);
+    
+    reg_driver #(
         .AW(64),
         .DW(64),
-        .IW(3),
-        .UW(1),
-        .TA(0ns),
-        .TT(1ns)
-    ) axi_fe_driver = new(axi_if);
-
-    `AXI_ASSIGN_FROM_RESP(axi_if, fe_reg_rsp)
-    `AXI_ASSIGN_TO_REQ(fe_reg_req, axi_if)
-
-    typedef axi_ax_beat #(.AW(64), .IW(3), .UW(1)) aw_beat_t;
-    typedef axi_w_beat #(.DW(64), .UW(1)) w_beat_t;
-
+        .TA(64'd0),
+        .TT(64'd0)
+    ) i_reg_iface_driver = new (i_reg_iface_bus);
+    
+    assign bus_req.addr  = i_reg_iface_bus.addr;
+    assign bus_req.write = i_reg_iface_bus.write;
+    assign bus_req.wdata = i_reg_iface_bus.wdata;
+    assign bus_req.wstrb = i_reg_iface_bus.wstrb;
+    assign bus_req.valid = i_reg_iface_bus.valid;
+    assign i_reg_iface_bus.rdata   = bus_rsp.rdata;
+    assign i_reg_iface_bus.ready   = bus_rsp.ready;
+    assign i_reg_iface_bus.error   = bus_rsp.error;
+    
     initial begin
-        automatic aw_beat_t aw_pkt = new();
-        automatic w_beat_t  w_pkt = new();
-
-        axi_fe_driver.reset_master();
+        logic error;
+    
+        i_reg_iface_driver.reset_master();
         @(posedge rst);
-
+        
         repeat (5) @(posedge clk);
-       
-        aw_pkt.ax_addr  = IDMA_DESC64_DESC_ADDR_OFFSET;
-        aw_pkt.ax_len   = 0; // 1 burst
-        aw_pkt.ax_size  = 3; // 8bytes in burst
-        aw_pkt.ax_burst = 1; // incr
-        w_pkt.w_data    = 64'hF000000000000000;
-        w_pkt.w_strb    = 8'hFF;
-        w_pkt.w_last    = 1;
-
-        fork
-            axi_fe_driver.send_aw(aw_pkt);
-            axi_fe_driver.send_w(w_pkt);
-        join
- 
+        
+        i_reg_iface_driver.send_write(
+            .addr (IDMA_DESC64_DESC_ADDR_OFFSET),
+            .data (64'hF000000000000000),
+            .strb(8'hff),
+            .error(error)
+        );
+        
         #2000;
         $finish();
     end
@@ -352,8 +346,6 @@ module tb_idma_desc64fe_axisbe();
             
             r_data = fake_accelerator_data_q.pop_front();
             r_last = fake_accelerator_last_q.pop_front();
-            
-            @(posedge clk); // Fake accelerator delay
             
             //$display("[iDMA][AXI-S][Slave][%0t] Before send: DATA=%0h LAST=%0h", $time, r_data, r_last);
             read_drv.send(r_data, r_last);
