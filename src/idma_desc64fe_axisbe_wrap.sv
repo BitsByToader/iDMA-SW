@@ -64,11 +64,7 @@ module idma_desc64fe_axisbe_wrap #(
     /// AXI Stream Request and Response channel type
     parameter type axis_req_t    = logic,
     parameter type axis_t_chan_t = logic,
-    parameter type axis_rsp_t    = logic,
-    /// regbus interface types. Use the REG_BUS_TYPEDEF macros to define the types
-    /// or see the idma backend documentation for more details
-    parameter type reg_rsp_t    = logic,
-    parameter type reg_req_t    = logic
+    parameter type axis_rsp_t    = logic
 )(
     /// clock
     input  logic                  clk_i             ,
@@ -163,6 +159,7 @@ logic rsp_ready;
 idma_pkg::idma_busy_t busy;
 
 ///FRONT END AXI///
+`REG_BUS_TYPEDEF_ALL(reg, /* addr */ addr_t, /* data */ data_t, /* strobe */ strb_t)
 reg_req_t fe_reg_req;
 reg_rsp_t fe_reg_rsp;
 

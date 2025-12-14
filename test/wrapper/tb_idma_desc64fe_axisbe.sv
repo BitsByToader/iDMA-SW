@@ -9,27 +9,14 @@ import axi_stream_test::*;
 import axi_test::*;
 import idma_desc64_reg_pkg::*;
 
-typedef logic [63:0] data_t;
-typedef logic [63:0] addr_t;
-typedef logic [ 7:0] strb_t;
-typedef logic [ 2:0] axis_id_t;
-typedef logic [ 2:0] axi_id_t;
-typedef logic [23:0] tf_len_t;
-typedef logic [ 0:0] user_t;
-
-`REG_BUS_TYPEDEF_ALL(reg, /* addr */ addr_t, /* data */ data_t, /* strobe */ strb_t)
-`AXI_TYPEDEF_ALL(axi, /* addr */ addr_t, /* id */ axi_id_t, /* data */ data_t, /* strb */ strb_t, /* user */ user_t)
-
-`AXI_STREAM_TYPEDEF_S_CHAN_T(axis_t_chan_t, data_t, strb_t, strb_t, axis_id_t, axis_id_t, user_t)
-`AXI_STREAM_TYPEDEF_REQ_T(axis_req_t, axis_t_chan_t)
-`AXI_STREAM_TYPEDEF_RSP_T(axis_rsp_t)
-
 module axi_sim_mem_with_print #(
     parameter int AddrWidth = 64,
     parameter int DataWidth = 64,
     parameter int UserWidth = 1,
     parameter int IdWidth = 3,
-    parameter string Name = ""
+    parameter string Name = "",
+    parameter type axi_req_t = logic,
+    parameter type axi_resp_t = logic
 ) (
     input logic clk_i,
     input logic rst_ni,
@@ -110,6 +97,19 @@ function automatic void write_mem(ref logic [7:0] mem[logic [63:0]], input logic
 endfunction : write_mem
 
 module tb_idma_desc64fe_axisbe();
+    
+    typedef logic [63:0] data_t;
+    typedef logic [63:0] addr_t;
+    typedef logic [ 7:0] strb_t;
+    typedef logic [ 2:0] axis_id_t;
+    typedef logic [ 2:0] axi_id_t;
+    typedef logic [ 0:0] user_t;
+
+    `AXI_TYPEDEF_ALL(axi, /* addr */ addr_t, /* id */ axi_id_t, /* data */ data_t, /* strb */ strb_t, /* user */ user_t)
+    `AXI_STREAM_TYPEDEF_S_CHAN_T(axis_t_chan_t, data_t, strb_t, strb_t, axis_id_t, axis_id_t, user_t)
+    `AXI_STREAM_TYPEDEF_REQ_T(axis_req_t, axis_t_chan_t)
+    `AXI_STREAM_TYPEDEF_RSP_T(axis_rsp_t)
+    
     logic clk, rst;
     
     initial begin
@@ -142,14 +142,11 @@ module tb_idma_desc64fe_axisbe();
         .StrbWidth(8),
         .TFLenWidth(32),
         .UserWidth(1),
-        .NSpeculation(0), // TODO: Remove after debug!
         .axi_req_t(axi_req_t),
         .axi_rsp_t(axi_resp_t),
         .axis_req_t(axis_req_t),
         .axis_rsp_t(axis_rsp_t),
         .axis_t_chan_t(axis_t_chan_t),
-        .reg_req_t(reg_req_t),
-        .reg_rsp_t(reg_rsp_t),
         .axi_ar_chan_t(axi_ar_chan_t),
         .axi_r_chan_t(axi_r_chan_t),
         .axi_aw_chan_t(axi_aw_chan_t),
@@ -179,14 +176,22 @@ module tb_idma_desc64fe_axisbe();
         .master_be_axi_rsp_i(be_axi_rsp)
     );
     
-    axi_sim_mem_with_print #(.Name("DESC_MEM")) desc_mem (
+    axi_sim_mem_with_print #(
+        .Name("DESC_MEM"),
+        .axi_req_t(axi_req_t),
+        .axi_resp_t(axi_resp_t)
+    ) desc_mem (
         .clk_i(clk),
         .rst_ni(rst),
         .axi_req_i(desc_master_req),
         .axi_rsp_o(desc_master_rsp)
     );
     
-    axi_sim_mem_with_print #(.Name("BE_MEM")) be_mem (
+    axi_sim_mem_with_print #(
+        .Name("BE_MEM"),
+        .axi_req_t(axi_req_t),
+        .axi_resp_t(axi_resp_t)
+    ) be_mem (
         .clk_i(clk),
         .rst_ni(rst),
         .axi_req_i(be_axi_req),
