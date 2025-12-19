@@ -27,6 +27,7 @@ import idma_desc64_reg_pkg::idma_desc64_hw2reg_t; #(
 );
 
     import idma_desc64_reg_pkg::IDMA_DESC64_DESC_ADDR_OFFSET;
+    import idma_desc64_reg_pkg::IDMA_DESC64_BASE_ADDR;
 
     reg_req_t request;
     reg_rsp_t response;
@@ -53,7 +54,7 @@ import idma_desc64_reg_pkg::idma_desc64_hw2reg_t; #(
     assign reg_rsp_o.error = response.error;
 
     always_comb begin
-        if (reg_req_i.addr == IDMA_DESC64_DESC_ADDR_OFFSET) begin
+        if (reg_req_i.addr == (IDMA_DESC64_BASE_ADDR + IDMA_DESC64_DESC_ADDR_OFFSET)) begin
             request.valid = reg_req_i.valid && input_addr_ready_i;
         end else begin
             request.valid = reg_req_i.valid;
@@ -62,7 +63,7 @@ import idma_desc64_reg_pkg::idma_desc64_hw2reg_t; #(
 
     always_comb begin
         // only take into account the fifo if a write is going to it
-        if (reg_req_i.addr == IDMA_DESC64_DESC_ADDR_OFFSET) begin
+        if (reg_req_i.addr == (IDMA_DESC64_BASE_ADDR + IDMA_DESC64_DESC_ADDR_OFFSET)) begin
             reg_rsp_o.ready = response.ready && input_addr_ready_i;
             input_addr_valid_o = reg2hw_o.desc_addr.qe || input_addr_valid_q;
         end else begin

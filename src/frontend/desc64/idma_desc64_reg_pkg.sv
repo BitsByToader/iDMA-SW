@@ -40,6 +40,7 @@ package idma_desc64_reg_pkg;
   } idma_desc64_hw2reg_t;
 
   // Register offsets
+  parameter logic [63:0] IDMA_DESC64_BASE_ADDR = 64'hA0000000;
   parameter logic [BlockAw-1:0] IDMA_DESC64_DESC_ADDR_OFFSET = 4'h 0;
   parameter logic [BlockAw-1:0] IDMA_DESC64_STATUS_OFFSET = 4'h 8;
 

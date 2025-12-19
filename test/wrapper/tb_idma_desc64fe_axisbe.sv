@@ -13,7 +13,7 @@ module axi_sim_mem_with_print #(
     parameter int AddrWidth = 64,
     parameter int DataWidth = 64,
     parameter int UserWidth = 1,
-    parameter int IdWidth = 3,
+    parameter int IdWidth = 16,
     parameter string Name = "",
     parameter type axi_req_t = logic,
     parameter type axi_resp_t = logic
@@ -32,8 +32,8 @@ module axi_sim_mem_with_print #(
     axi_sim_mem #(
         .AddrWidth(AddrWidth),
         .DataWidth(DataWidth),
-        .UserWidth(1),
-        .IdWidth(3),
+        .UserWidth(UserWidth),
+        .IdWidth(IdWidth),
         .NumPorts(1),
         .axi_req_t(axi_req_t),
         .axi_rsp_t(axi_resp_t),
@@ -101,8 +101,8 @@ module tb_idma_desc64fe_axisbe();
     typedef logic [63:0] data_t;
     typedef logic [63:0] addr_t;
     typedef logic [ 7:0] strb_t;
-    typedef logic [ 2:0] axis_id_t;
-    typedef logic [ 2:0] axi_id_t;
+    typedef logic [15:0] axis_id_t;
+    typedef logic [15:0] axi_id_t;
     typedef logic [ 0:0] user_t;
 
     `AXI_TYPEDEF_ALL(axi, /* addr */ addr_t, /* id */ axi_id_t, /* data */ data_t, /* strb */ strb_t, /* user */ user_t)
@@ -137,11 +137,12 @@ module tb_idma_desc64fe_axisbe();
     
     idma_desc64fe_axisbe_wrap #(
         .AddrWidth(64),
-        .AxiIdWidth(3),
+        .AxiIdWidth(16),
         .DataWidth(64),
         .StrbWidth(8),
         .TFLenWidth(32),
         .UserWidth(1),
+        .NSpeculation(0),
         .axi_req_t(axi_req_t),
         .axi_rsp_t(axi_resp_t),
         .axis_req_t(axis_req_t),
@@ -156,8 +157,8 @@ module tb_idma_desc64fe_axisbe();
         .rst_ni(rst),
         
         .testmode_i(1'b0),
-        .axi_ar_id_i(3'b111),
-        .axi_aw_id_i(3'b111),
+        .axi_ar_id_i(16'b111111),
+        .axi_aw_id_i(16'b111111),
         
         .irq_o(),
         
@@ -218,16 +219,16 @@ module tb_idma_desc64fe_axisbe();
         
         
         // AXI to AXI-Stream transfer
-        write_mem(desc_mem.bank.mem, 64'hf000000000000000, 64'h2800006B_00000080); // 32bit flags | 32bit length (in bytes)
-        write_mem(desc_mem.bank.mem, 64'hf000000000000008, 64'hf000000000000020); // next descriptor
-        write_mem(desc_mem.bank.mem, 64'hf000000000000010, 64'h1000000000000000); // source addr
-        write_mem(desc_mem.bank.mem, 64'hf000000000000018, 64'h0000000000000000); // destination addr, destination is AXI-Stream
+        write_mem(desc_mem.bank.mem, 64'h00000000000090c0, 64'h2800006B_00000080); // 32bit flags | 32bit length (in bytes)
+        write_mem(desc_mem.bank.mem, 64'h00000000000090c8, 64'h0000000000009100); // next descriptor
+        write_mem(desc_mem.bank.mem, 64'h00000000000090D0, 64'h1000000000000000); // source addr
+        write_mem(desc_mem.bank.mem, 64'h00000000000090D8, 64'h0000000000000000); // destination addr, destination is AXI-Stream
         
         // AXI-Stream to AXI transfer
-        write_mem(desc_mem.bank.mem, 64'hf000000000000020, 64'h0500006B_00000080); // 32bit flags | 32bit length (in bytes)
-        write_mem(desc_mem.bank.mem, 64'hf000000000000028, 64'hFFFFFFFFFFFFFFFF); // next descriptor -> no desc
-        write_mem(desc_mem.bank.mem, 64'hf000000000000030, 64'h0000000000000000); // source addr -> source is AXI-Stream
-        write_mem(desc_mem.bank.mem, 64'hf000000000000038, 64'h2000000000000000); // destination addr
+        write_mem(desc_mem.bank.mem, 64'h0000000000009100, 64'h0500006B_00000080); // 32bit flags | 32bit length (in bytes)
+        write_mem(desc_mem.bank.mem, 64'h0000000000009108, 64'hFFFFFFFFFFFFFFFF); // next descriptor -> no desc
+        write_mem(desc_mem.bank.mem, 64'h0000000000009110, 64'h0000000000000000); // source addr -> source is AXI-Stream
+        write_mem(desc_mem.bank.mem, 64'h0000000000009118, 64'h2000000000000000); // destination addr
         
         /*
         // AXI to AXI transfer
@@ -241,14 +242,14 @@ module tb_idma_desc64fe_axisbe();
     AXI_BUS_DV #(
         .AXI_ADDR_WIDTH(64),
         .AXI_DATA_WIDTH(64),
-        .AXI_ID_WIDTH(3),
+        .AXI_ID_WIDTH(16),
         .AXI_USER_WIDTH(1)
     ) axi_if(clk);
 
     axi_driver #(
         .AW(64),
         .DW(64),
-        .IW(3),
+        .IW(16),
         .UW(1),
         .TA(0ns),
         .TT(1ns)
@@ -257,7 +258,7 @@ module tb_idma_desc64fe_axisbe();
     `AXI_ASSIGN_FROM_RESP(axi_if, fe_reg_rsp)
     `AXI_ASSIGN_TO_REQ(fe_reg_req, axi_if)
 
-    typedef axi_ax_beat #(.AW(64), .IW(3), .UW(1)) aw_beat_t;
+    typedef axi_ax_beat #(.AW(64), .IW(16), .UW(1)) aw_beat_t;
     typedef axi_w_beat #(.DW(64), .UW(1)) w_beat_t;
 
     initial begin
@@ -269,11 +270,12 @@ module tb_idma_desc64fe_axisbe();
 
         repeat (5) @(posedge clk);
        
-        aw_pkt.ax_addr  = IDMA_DESC64_DESC_ADDR_OFFSET;
+        aw_pkt.ax_id    = 'h18d;
+        aw_pkt.ax_addr  = 64'hA0000000 + IDMA_DESC64_DESC_ADDR_OFFSET;
         aw_pkt.ax_len   = 0; // 1 burst
         aw_pkt.ax_size  = 3; // 8bytes in burst
         aw_pkt.ax_burst = 1; // incr
-        w_pkt.w_data    = 64'hF000000000000000;
+        w_pkt.w_data    = 64'h00000000000090c0;
         w_pkt.w_strb    = 8'hFF;
         w_pkt.w_last    = 1;
 
@@ -281,21 +283,28 @@ module tb_idma_desc64fe_axisbe();
             axi_fe_driver.send_aw(aw_pkt);
             axi_fe_driver.send_w(w_pkt);
         join
- 
-        #2000;
+    end
+    
+    initial begin
+        #1000ns;
+        
+        for(int i = 0;i < 16; i=i+1) begin
+            assert(be_mem.bank.mem[64'h2000000000000000+i*8] == i+1);
+        end
+        
         $finish();
     end
     
     AXI_STREAM_BUS_DV #(
         .DataWidth(64),
-        .IdWidth(3),
+        .IdWidth(16),
         .DestWidth(3),
         .UserWidth(1)
     ) write_stream_if(clk);
     
     axi_stream_driver #(
         .DataWidth(64),
-        .IdWidth(3),
+        .IdWidth(16),
         .DestWidth(3),
         .UserWidth(1),
         .TestTime(1ns)
@@ -306,14 +315,14 @@ module tb_idma_desc64fe_axisbe();
     
     AXI_STREAM_BUS_DV #(
         .DataWidth(64),
-        .IdWidth(3),
+        .IdWidth(16),
         .DestWidth(3),
         .UserWidth(1)
     ) read_stream_if(clk);
     
     axi_stream_driver #(
         .DataWidth(64),
-        .IdWidth(3),
+        .IdWidth(16),
         .DestWidth(3),
         .UserWidth(1),
         .TestTime(1ns)
