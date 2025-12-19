@@ -18,13 +18,14 @@ typedef struct {
 // AXI spec *mandates* that transfers don't cross a 4kb boundary, so that a burst doesn't access multiple slaves.
 // So align data by 4kb.
 __attribute__((aligned(4096))) volatile idma_descr tx_desc;
-/* __attribute__((aligned(4096))) */ volatile idma_descr rx_desc; // 'high' (0xc000) addresses make the SoC return garbage for the rx descr(?!!?!)
+__attribute__((aligned(4096))) volatile idma_descr rx_desc;
 __attribute__((aligned(4096))) volatile uint64_t src_data[16];
 __attribute__((aligned(4096))) volatile uint64_t dst_data[16];
 
 int main() {
     volatile idma_descr *tx_desc_ptr = &tx_desc;
     volatile idma_descr *rx_desc_ptr = &rx_desc;
+    uint64_t first_descr_addr = (uint64_t) tx_desc_ptr;
 
     tx_desc_ptr->flags = 0x2800006B00000080;
     tx_desc_ptr->next_descr_ptr = (uint64_t) rx_desc_ptr;
@@ -43,11 +44,10 @@ int main() {
 
     Xil_DCacheFlushRange((UINTPTR)src_data, 16*sizeof(uint64_t));
     Xil_DCacheFlushRange((UINTPTR)dst_data, 16*sizeof(uint64_t));
-
-    uint64_t first_descr_addr = (uint64_t) tx_desc_ptr;
+    Xil_DCacheFlushRange((UINTPTR)tx_desc_ptr, 4*sizeof(uint64_t));
+    Xil_DCacheFlushRange((UINTPTR)rx_desc_ptr, 4*sizeof(uint64_t));
+    
     *idma_reg_descr_addr = first_descr_addr;
-
-    Xil_DCacheFlushRange((UINTPTR)first_descr_addr, 4*sizeof(uint64_t));
 
     for (uint64_t i = 0; i < 1000; i++) {
         ;
