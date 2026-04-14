@@ -37,11 +37,11 @@ static int pin_and_map_buffer(unsigned long user_addr, size_t len, int write,
     unsigned long end = user_addr + len;
     unsigned long page_count = (end >> PAGE_SHIFT) - (start >> PAGE_SHIFT) + 1;
 
-    /* 1. Allocate array to hold page pointers */
+    /* Allocate array to hold page pointers */
     pages = kvmalloc_array(page_count, sizeof(struct page *), GFP_KERNEL);
     if (!pages) return -ENOMEM;
 
-    /* 2. Pin User Pages (Locks them in RAM) */
+    /* Pin User Pages (Locks them in RAM) */
     /* Note: FOLL_WRITE if DMA writes TO memory. */
     ret = pin_user_pages_fast(user_addr, page_count, 
                               write ? FOLL_WRITE | FOLL_FORCE : FOLL_FORCE, 
@@ -52,7 +52,7 @@ static int pin_and_map_buffer(unsigned long user_addr, size_t len, int write,
     }
     *n_pages = ret;
 
-    /* 3. Allocate Scatter-Gather List */
+    /* Allocate Scatter-Gather List */
     sg = kvmalloc_array(*n_pages, sizeof(struct scatterlist), GFP_KERNEL);
     if (!sg) {
         unpin_user_pages(pages, *n_pages);
@@ -73,7 +73,7 @@ static int pin_and_map_buffer(unsigned long user_addr, size_t len, int write,
         sg_set_page(&sg[i], pages[i], p_len, offset);
     }
 
-    /* 4. Map SG to DMA Addresses */
+    /* Map SG to DMA Addresses */
     *n_ents = dma_map_sg(dma_chan->device->dev, sg, *n_pages, 
                          write ? DMA_FROM_DEVICE : DMA_TO_DEVICE);
     
@@ -101,18 +101,22 @@ static long my_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
     if (!dma_chan) return -ENODEV;
 
+    pr_info("[iDMA][Frontend] Prepping transfer...\n");
+
     /* --- SETUP BASED ON MODE --- */
     
     if (data.mode == MODE_MEM_TO_MEM) {
         /* MEMCPY: Pin Source and Dest */
         
-        // 1. Map Source (Read from User -> DMA TO DEV)
+        // Map Source (Read from User -> DMA TO DEV)
         ret = pin_and_map_buffer(data.src_ptr, data.len, 0, &src_pages, &src_sg, &src_n_pages, &src_n_ents);
         if (ret) goto out;
 
-        // 2. Map Dest (Write to User -> DMA FROM DEV)
+        // Map Dest (Write to User -> DMA FROM DEV)
         ret = pin_and_map_buffer(data.dst_ptr, data.len, 1, &dst_pages, &dst_sg, &dst_n_pages, &dst_n_ents);
         if (ret) goto out;
+
+        pr_info("\tPinned and mapped buffers for transfer.\n");
 
         /* NOTE: dmaengine_prep_dma_memcpy usually takes dma_addr_t, not SG list.
            Real efficient drivers implement prep_dma_sg for memcpy. 
@@ -126,37 +130,39 @@ static long my_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
     } else if (data.mode == MODE_MEM_TO_STREAM) {
         /* MEM -> STREAM */
 
-        // 1. Configure Stream (Slave)
+        // Configure Stream (Slave)
         cfg.direction = DMA_MEM_TO_DEV;
         cfg.dst_addr = 0;
         cfg.dst_addr_width = DMA_SLAVE_BUSWIDTH_8_BYTES;
         dmaengine_slave_config(dma_chan, &cfg);
 
-        // 2. Map Source Memory
+        // Map Source Memory
         ret = pin_and_map_buffer(data.src_ptr, data.len, 0, &src_pages, &src_sg, &src_n_pages, &src_n_ents);
         if (ret) goto out;
 
-        // 3. Prep Slave SG
+        // Prep Slave SG
         tx = dmaengine_prep_slave_sg(dma_chan, src_sg, src_n_ents, 
                                      DMA_MEM_TO_DEV, DMA_CTRL_ACK | DMA_PREP_INTERRUPT);
 
     } else if (data.mode == MODE_STREAM_TO_MEM) {
         /* STREAM -> MEM */
 
-        // 1. Configure Stream (Slave)
+        // Configure Stream (Slave)
         cfg.direction = DMA_DEV_TO_MEM;
         cfg.src_addr = 0;
         cfg.src_addr_width = DMA_SLAVE_BUSWIDTH_8_BYTES;
         dmaengine_slave_config(dma_chan, &cfg);
 
-        // 2. Map Dest Memory
+        // Map Dest Memory
         ret = pin_and_map_buffer(data.dst_ptr, data.len, 1, &dst_pages, &dst_sg, &dst_n_pages, &dst_n_ents);
         if (ret) goto out;
 
-        // 3. Prep Slave SG
+        // Prep Slave SG
         tx = dmaengine_prep_slave_sg(dma_chan, dst_sg, dst_n_ents, 
                                      DMA_DEV_TO_MEM, DMA_CTRL_ACK | DMA_PREP_INTERRUPT);
     }
+
+    pr_info("[iDMA][Frontend] Prepped transfer. Submitting...\n");
 
     if (!tx) {
         ret = -EIO;
@@ -176,6 +182,8 @@ static long my_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         dmaengine_terminate_all(dma_chan);
         ret = -ETIMEDOUT;
     }
+
+    pr_info("[iDMA][Frontend] Transfer done.\n");
 
 out:
     /* --- CLEANUP --- */
@@ -206,6 +214,17 @@ static struct miscdevice my_misc_dev = {
     .fops = &my_fops,
 };
 
+static bool idma_filter_fn(struct dma_chan *chan, void *param)
+{
+    /* Check if the device attached to this channel has our provider's name */
+    if (chan->device && chan->device->dev && chan->device->dev->driver) {
+        if (strcmp(chan->device->dev->driver->name, "idma-provider") == 0) {
+            return true;
+        }
+    }
+    return false; // Not iDMA driver, keep looking.
+}
+
 static int __init idma_client_init(void)
 {
     dma_cap_mask_t mask;
@@ -216,13 +235,13 @@ static int __init idma_client_init(void)
     dma_cap_set(DMA_SLAVE, mask);
 
     // Request ANY channel matching mask
-    dma_chan = dma_request_channel(mask, NULL, NULL);
+    dma_chan = dma_request_channel(mask, idma_filter_fn, NULL);
     if (!dma_chan) {
         pr_err("No DMA channel found!\n");
         return -ENODEV;
     }
 
-    pr_info("[iDMA][Frontend] iDMA client loaded.");
+    pr_info("[iDMA][Frontend] iDMA client loaded.\n");
 
     return misc_register(&my_misc_dev);
 }
