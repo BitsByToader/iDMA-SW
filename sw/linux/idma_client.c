@@ -12,7 +12,6 @@
 #define CLIENT_NAME "idma"
 
 static struct dma_chan *dma_chan;
-static struct completion dma_comp;
 
 /* 
  * Callback: Called when the backend finishes the job 
@@ -96,6 +95,8 @@ static long my_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
     int ret = 0;
     dma_cookie_t cookie;
 
+    DECLARE_COMPLETION_ONSTACK(dma_comp);
+
     if (cmd != IOCTL_DMA_SUBMIT) return -EINVAL;
     if (copy_from_user(&data, (void __user *)arg, sizeof(data))) return -EFAULT;
 
@@ -116,7 +117,7 @@ static long my_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         ret = pin_and_map_buffer(data.dst_ptr, data.len, 1, &dst_pages, &dst_sg, &dst_n_pages, &dst_n_ents);
         if (ret) goto out;
 
-        pr_info("\tPinned and mapped buffers for transfer.\n");
+        pr_info("[iDMA][Frontend]Pinned and mapped buffers for transfer.\n");
 
         /* NOTE: dmaengine_prep_dma_memcpy usually takes dma_addr_t, not SG list.
            Real efficient drivers implement prep_dma_sg for memcpy. 
@@ -170,7 +171,6 @@ static long my_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
     }
 
     /* --- SUBMIT --- */
-    init_completion(&dma_comp);
     tx->callback = dma_callback_func;
     tx->callback_param = &dma_comp;
 
@@ -181,6 +181,7 @@ static long my_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
     if (!wait_for_completion_timeout(&dma_comp, msecs_to_jiffies(1000))) {
         dmaengine_terminate_all(dma_chan);
         ret = -ETIMEDOUT;
+        pr_warn("[iDMA][Frontend] Timed out!\n");
     }
 
     pr_info("[iDMA][Frontend] Transfer done.\n");

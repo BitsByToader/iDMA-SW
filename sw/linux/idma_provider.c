@@ -6,12 +6,13 @@
 #include <linux/io.h>
 #include <linux/io-64-nonatomic-lo-hi.h>
 #include <linux/interrupt.h>
+#include <linux/mod_devicetable.h>
+#include <linux/of.h>
+
 #include "virt-dma.h"
 #include "idma_common.h"
 
 #define DRIVER_NAME "idma-provider"
-
-#define IDMA_JOB_DONE_IRQ_NO    56
 
 /* Hardware Register Offsets (from idma_desc64.hjson) */
 #define IDMA_REG_DESC_ADDR  0x00
@@ -62,7 +63,6 @@ struct idma_sw_desc {
 struct idma_dev {
     struct dma_device dma_dev;
     struct virt_dma_chan vchan;
-    spinlock_t hw_lock;
     void __iomem *regs;
     struct dma_slave_config slave_cfg;
     struct list_head submitted_jobs;
@@ -84,11 +84,8 @@ static void idma_feed_hardware(struct idma_dev *mdev)
 
     /* Loop as long as there are jobs waiting in the virt-dma queue */
     while (!list_empty(&mdev->vchan.desc_issued)) {
-        unsigned long flags;
-
         /* Check if the hardware can accept another job */
-        // TODO: readq on 64bit systems
-        status = readl(mdev->regs + IDMA_REG_STATUS);
+        status = readq(mdev->regs + IDMA_REG_STATUS);
         if (status & IDMA_STATUS_FIFO_FULL) {
             pr_info("[iDMA][Backend] Descriptor FIFO is full. Job is stalled until FIFO empties.\n");
             break; /* Hardware FIFO is full, stop feeding! */
@@ -101,13 +98,9 @@ static void idma_feed_hardware(struct idma_dev *mdev)
         /* Move it to our shadow queue so the ISR can find it later */
         list_move_tail(&vd->node, &mdev->submitted_jobs);
 
-        /* Write to the hardware register to queue it up (32-bit safe order) */
+        /* Write to the hardware register to queue it up */
         pr_info("[iDMA][Backend] Submitting DMA Chain (Physical Addr: %pad)\n", &sw_desc->hw_paddr);
-        // TODO: Make this a single writeq on ZynqUS+ or other 64bit systems...
-        spin_lock_irqsave(&mdev->hw_lock, flags);
-        writel(upper_32_bits(sw_desc->hw_paddr), mdev->regs + IDMA_REG_DESC_ADDR + 4);
-        writel(lower_32_bits(sw_desc->hw_paddr), mdev->regs + IDMA_REG_DESC_ADDR);
-        spin_unlock_irqrestore(&mdev->hw_lock, flags);
+        writeq(sw_desc->hw_paddr, mdev->regs + IDMA_REG_DESC_ADDR);
     }
 }
 
@@ -116,9 +109,10 @@ static irqreturn_t idma_irq_handler(int irq, void *dev_id)
     struct idma_dev *mdev = dev_id;
     struct virt_dma_desc *vd;
     unsigned long flags;
-    u32 status;
 
     spin_lock_irqsave(&mdev->vchan.lock, flags);
+
+    pr_info("[iDMA][Backend] Got IRQ!");
 
     /* Complete the oldest submitted job */
     vd = list_first_entry_or_null(&mdev->submitted_jobs, struct virt_dma_desc, node);
@@ -199,7 +193,7 @@ static struct dma_async_tx_descriptor *idma_prep_memcpy(
     desc->hw_vaddr[0].src = src;
     desc->hw_vaddr[0].dst = dest;
 
-    pr_info("[iDMA][Backend] Prepped mem2mem transfer. Descriptor at virt address: %p. Phys addr: %x\n", desc->hw_vaddr, desc->hw_paddr);
+    pr_info("[iDMA][Backend] Prepped mem2mem transfer. Descriptor at virt address: %p. Phys addr: %llx\n", desc->hw_vaddr, desc->hw_paddr);
     pr_info("[iDMA][Backend] \tSRC addr: %llx. DST addr: %llx. Next desc: %llx.\n", desc->hw_vaddr[0].src, desc->hw_vaddr[0].dst, desc->hw_vaddr[0].next_desc);
 
     return vchan_tx_prep(&mdev->vchan, &desc->vdesc, flags);
@@ -251,7 +245,7 @@ static struct dma_async_tx_descriptor *idma_prep_slave_sg(
             desc->hw_vaddr[i].next_desc = desc->hw_paddr + ((i + 1) * sizeof(struct idma_hw_desc));
         }
 
-        pr_info("[iDMA][Backend] \tPrepped descriptor for stream transfer. Descriptor at virt address: %p. Phys addr: %x\n", &desc->hw_vaddr[i], desc->hw_paddr + (i* sizeof(struct idma_hw_desc)));
+        pr_info("[iDMA][Backend] \tPrepped descriptor for stream transfer. Descriptor at virt address: %p. Phys addr: %llx\n", &desc->hw_vaddr[i], desc->hw_paddr + (i* sizeof(struct idma_hw_desc)));
         pr_info("[iDMA][Backend] \t\tSRC addr: %llx. DST addr: %llx. Next desc: %llx.\n", desc->hw_vaddr[i].src, desc->hw_vaddr[i].dst, desc->hw_vaddr[i].next_desc);
     }
 
@@ -262,9 +256,7 @@ static void idma_issue_pending(struct dma_chan *chan)
 {
     struct idma_dev *mdev = to_idma_dev(chan);
     unsigned long flags;
-    struct virt_dma_desc *vd;
-    struct idma_sw_desc *desc;
-
+    
     spin_lock_irqsave(&mdev->vchan.lock, flags);
 
     if (vchan_issue_pending(&mdev->vchan)) {
@@ -278,9 +270,31 @@ static void idma_free_chan_resources(struct dma_chan *chan) {
     vchan_free_chan_resources(to_virt_chan(chan));
 }
 
+static int idma_terminate_all(struct dma_chan *chan)
+{
+    struct idma_dev *mdev = to_idma_dev(chan);
+    unsigned long flags;
+    LIST_HEAD(head);
+
+    spin_lock_irqsave(&mdev->vchan.lock, flags);
+
+    /* Extract all pending, issued, and queued descriptors */
+    vchan_get_all_descriptors(&mdev->vchan, &head);
+
+    /* Clear out submitted jobs. */
+    list_splice_tail_init(&mdev->submitted_jobs, &head);
+    
+    spin_unlock_irqrestore(&mdev->vchan.lock, flags);
+    
+    /* Free cleared jobs. */
+    vchan_dma_desc_free_list(&mdev->vchan, &head);
+    
+    pr_info("[iDMA][Backend] Terminated all pending software descriptors.\n");
+    return 0;
+}
+
 static int idma_probe(struct platform_device *pdev)
 {
-    // TODO: Error handling!
     struct idma_dev *mdev;
     struct dma_device *dma;
     int ret;
@@ -293,8 +307,17 @@ static int idma_probe(struct platform_device *pdev)
     pr_info("[iDMA][Backend] Allocated memory for device structures.\n");   
     
     /* Get mapped hardware registers */
-    // FIXME: Get this from device tree.
-    mdev->regs = devm_ioremap(&pdev->dev, 0x43C00000, 0x1000);
+    mdev->regs = devm_platform_ioremap_resource(pdev, 0);
+    if (IS_ERR(mdev->regs)) {
+        dev_err(&pdev->dev, "Failed to map memory region\n");
+        return PTR_ERR(mdev->regs);
+    }
+
+    int irq = platform_get_irq(pdev, 0);
+    if (irq < 0) {
+        dev_err(&pdev->dev, "Failed to get IRQ from Device Tree\n");
+        return irq;
+    }
 
     // Configure dma API.
     dma = &mdev->dma_dev;
@@ -310,6 +333,7 @@ static int idma_probe(struct platform_device *pdev)
     dma->device_issue_pending = idma_issue_pending;
     dma->device_free_chan_resources = idma_free_chan_resources;
     dma->device_tx_status = dma_cookie_status;
+    dma->device_terminate_all = idma_terminate_all;
 
     dma->src_addr_widths = BIT(DMA_SLAVE_BUSWIDTH_8_BYTES);
     dma->dst_addr_widths = BIT(DMA_SLAVE_BUSWIDTH_8_BYTES);
@@ -323,16 +347,14 @@ static int idma_probe(struct platform_device *pdev)
     vchan_init(&mdev->vchan, dma);
     mdev->vchan.desc_free = idma_desc_free;
 
-    spin_lock_init(&mdev->hw_lock);
-
     ret = dma_async_device_register(dma);
     if (ret) return ret;
    
     // Set up interrupt.
-    // FIXME: Get IRQ NO from device tree.
-    ret = request_irq(IDMA_JOB_DONE_IRQ_NO, idma_irq_handler, IRQF_TRIGGER_RISING, "idma_done", mdev);
+    ret = devm_request_irq(&pdev->dev, irq, idma_irq_handler, 0, dev_name(&pdev->dev), mdev);
     if (ret) {
-        pr_err("[iDMA] IRQ register failed!\n");
+        dev_err(&pdev->dev, "[iDMA] IRQ %d register failed: %d\n", irq, ret);
+        dma_async_device_unregister(dma);
         return ret;
     }
     pr_info("[iDMA][Backend] IRQ registered!\n");
@@ -348,35 +370,25 @@ static int idma_remove(struct platform_device *pdev) {
     struct idma_dev *mdev = platform_get_drvdata(pdev);
     
     dma_async_device_unregister(&mdev->dma_dev);
-    free_irq(IDMA_JOB_DONE_IRQ_NO, mdev);
     tasklet_kill(&mdev->vchan.task);
     
     return 0;
 }
 
+static const struct of_device_id idma_of_match[] = {
+    { .compatible = "pulp,idma-provider", },
+    { /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(of, idma_of_match);
+
 static struct platform_driver idma_driver = {
     .probe = idma_probe, .remove = idma_remove,
-    .driver = { .name = DRIVER_NAME, },
+    .driver = {
+        .name = DRIVER_NAME,
+        .of_match_table = idma_of_match,
+    },
 };
-static struct platform_device *pdev_fake;
 
-static int __init idma_init(void) {
-    int ret = platform_driver_register(&idma_driver);
-    if (ret)
-        return ret;
+module_platform_driver(idma_driver);
 
-    pdev_fake = platform_device_register_simple(DRIVER_NAME, -1, NULL, 0);
-    if (IS_ERR(pdev_fake)) {
-        platform_driver_unregister(&idma_driver);
-    }
-
-    return 0;
-}
-
-static void __exit idma_exit(void) {
-    platform_device_unregister(pdev_fake);
-    platform_driver_unregister(&idma_driver); 
-}
-
-module_init(idma_init); module_exit(idma_exit);
 MODULE_LICENSE("GPL"); MODULE_DESCRIPTION("iDMA DMA Engine Provider");

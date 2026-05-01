@@ -1,0 +1,30 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    /* Fragment 0: Kill the old ghost Frame Buffer node */
+    fragment@0 {
+        /* Route directly to the exact path of the offending node */
+        target-path = "/amba_pl/v_frmbuf_rd@a0000000"; 
+        __overlay__ {
+            status = "disabled";
+        };
+    };
+
+    /* We attach this to the main AMBA/AXI bus */
+    fragment@1 {
+        target-path = "/amba_pl";
+        __overlay__ {
+            #address-cells = <2>;
+            #size-cells = <2>;
+
+            idma_dev: idma@43c00000 {
+                compatible = "pulp,idma-provider";
+                /* 64-bit addressing format: <UpperAddr LowerAddr UpperSize LowerSize> */
+                reg = <0x0 0xa0000000 0x0 0x1000>;                                                                                                                            
+                interrupt-parent = <&gic>;
+                interrupts = <0 89 1>;
+            };
+        };
+    };
+};

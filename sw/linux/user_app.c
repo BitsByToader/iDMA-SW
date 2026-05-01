@@ -5,48 +5,45 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <time.h>
 #include "idma_common.h"
 
 #define DEVICE_FILE "/dev/idma"
-#define BUFFER_SIZE 3*1048 // 3KB, should be less than one page
+#define BUFFER_SIZE 4*1024  /* Exactly 1 Page to prevent SG-list corruption in current driver */
+#define ITERATIONS  5     /* Number of transfers to average */
+
+/* Helper to calculate time difference in seconds */
+double get_elapsed_time(struct timespec *start, struct timespec *end) {
+    return (end->tv_sec - start->tv_sec) + 
+           (end->tv_nsec - start->tv_nsec) / 1e9;
+}
 
 int main() {
     int fd;
     struct idma_ioctl_data data;
     char *src_buf, *dst_buf;
-    int ret;
+    struct timespec start_time, end_time;
+    double total_time = 0.0;
+    double total_bytes = (double)BUFFER_SIZE * ITERATIONS;
 
-    printf("[User] Opening DMA Driver...\n");
+    printf("[Benchmark] Opening DMA Driver...\n");
     fd = open(DEVICE_FILE, O_RDWR);
     if (fd < 0) {
-        perror("Failed to open driver (did you run 'make load'?)");
+        perror("Failed to open driver");
         return -1;
     }
 
-    /* Allocate aligned memory for zero-copy efficiency */
-    if (posix_memalign((void **)&src_buf, 4096, BUFFER_SIZE)) {
+    /* Allocate page-aligned memory */
+    if (posix_memalign((void **)&src_buf, 4096, BUFFER_SIZE) || 
+        posix_memalign((void **)&dst_buf, 4096, BUFFER_SIZE)) {
         perror("Aligned malloc failed");
-        return -1;
-    }
-    if (posix_memalign((void **)&dst_buf, 4096, BUFFER_SIZE)) {
-        perror("Aligned malloc failed");
+        close(fd);
         return -1;
     }
 
-    /* Initialize Data */
-    memset(src_buf, 0x00, BUFFER_SIZE);
-    for (int i = 0; i < BUFFER_SIZE; i+=8) {
-        src_buf[i] = 0xA0 + i/8;
-    }
-    printf("Initial buffer:\n");
-    for (int i = 0; i < BUFFER_SIZE; i++) {
-        printf("%x ", src_buf[i]);
-    }
-    printf("\n");
-    
-    memset(dst_buf, 0x00, BUFFER_SIZE); // Fill Dest with 0x00
-
-    printf("[User] Preparing DMA Memcpy (0xAA pattern)...\n");
+    /* Initialize with dummy data */
+    memset(src_buf, 0xAB, BUFFER_SIZE);
+    memset(dst_buf, 0x00, BUFFER_SIZE);
 
     /* Setup IOCTL Data */
     data.src_ptr = (unsigned long)src_buf;
@@ -54,37 +51,44 @@ int main() {
     data.len = BUFFER_SIZE;
     data.mode = MODE_MEM_TO_MEM;
 
-    /* Call the Driver */
-    ret = ioctl(fd, IOCTL_DMA_SUBMIT, &data);
-    if (ret < 0) {
-        perror("M2S IOCTL Failed");
+    printf("[Benchmark] Running %d iterations of %d bytes...\n", ITERATIONS, BUFFER_SIZE);
+
+    /* WARM-UP RUN (Don't measure this one, ensures caches/TLB are hot) */
+    ioctl(fd, IOCTL_DMA_SUBMIT, &data);
+
+    /* ACTUAL BENCHMARK LOOP */
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
+
+    for (int i = 0; i < ITERATIONS; i++) {
+        if (ioctl(fd, IOCTL_DMA_SUBMIT, &data) < 0) {
+            perror("DMA IOCTL Failed during benchmark");
+            goto cleanup;
+        }
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+
+    /* Verify Data Integrity on the last run */
+    if (memcmp(src_buf, dst_buf, BUFFER_SIZE) != 0) {
+        printf("[Benchmark] ERROR: Data corruption detected during run!\n");
         goto cleanup;
     }
 
-    //data.src_ptr = 0;
-    //data.dst_ptr = (unsigned long) dst_buf;
-    //data.len = BUFFER_SIZE;
-    //data.mode = MODE_STREAM_TO_MEM;
+    /* Calculate Statistics */
+    total_time = get_elapsed_time(&start_time, &end_time);
     
-    //ret = ioctl(fd, IOCTL_DMA_SUBMIT, &data);
-    //if (ret < 0) {
-    //    perror("S2M IOCTL Failed");
-    //    goto cleanup;
-    //}
+    /* Convert to Megabytes per second (MB/s) */
+    double mb_transferred = total_bytes / (1024.0 * 1024.0);
+    double mbps = mb_transferred / total_time;
+    double avg_latency_us = (total_time / ITERATIONS) * 1e6;
 
-    printf("[User] DMA Complete!\n");
-   
-    for (int i = 0; i < 100000000; i++) {}
+    printf("\n--- DMA Benchmark Results ---\n");
+    printf("Total Transfer:    %.2f MB\n", mb_transferred);
+    printf("Total Time:        %.4f seconds\n", total_time);
+    printf("Avg Latency:       %.2f microseconds / transfer\n", avg_latency_us);
+    printf("Throughput:        %.2f MB/s\n", mbps);
+    printf("-----------------------------\n");
 
-    /* Verify Result */
-    if (memcmp(src_buf, dst_buf, BUFFER_SIZE) == 0) {
-        printf("[User] SUCCESS: Destination matches Source!\n");
-    } else {
-        printf("[User] FAILURE: Data mismatch.\n");
-        printf("Expected: %02x, Got: %02x\n", (unsigned char)src_buf[0], (unsigned char)dst_buf[0]);
-    }
-
-    /* Cleanup */
 cleanup:
     free(src_buf);
     free(dst_buf);
