@@ -5,6 +5,8 @@
 `include "axi_stream/typedef.svh"
 `include "axi_stream/assign.svh"
 
+`define TRANSFER_WORD_COUNT 10*1024 // 10KiloWords = 80KB
+
 import axi_stream_test::*;
 import axi_test::*;
 import idma_desc64_reg_pkg::*;
@@ -200,24 +202,11 @@ module tb_idma_desc64fe_axisbe();
     );
     
     initial begin
-        write_mem(be_mem.bank.mem, 64'h1000000000000000, 64'h0000000000000001);
-        write_mem(be_mem.bank.mem, 64'h1000000000000008, 64'h0000000000000002);
-        write_mem(be_mem.bank.mem, 64'h1000000000000010, 64'h0000000000000003);
-        write_mem(be_mem.bank.mem, 64'h1000000000000018, 64'h0000000000000004);
-        write_mem(be_mem.bank.mem, 64'h1000000000000020, 64'h0000000000000005);
-        write_mem(be_mem.bank.mem, 64'h1000000000000028, 64'h0000000000000006);
-        write_mem(be_mem.bank.mem, 64'h1000000000000030, 64'h0000000000000007);
-        write_mem(be_mem.bank.mem, 64'h1000000000000038, 64'h0000000000000008);
-        write_mem(be_mem.bank.mem, 64'h1000000000000040, 64'h0000000000000009);
-        write_mem(be_mem.bank.mem, 64'h1000000000000048, 64'h000000000000000A);
-        write_mem(be_mem.bank.mem, 64'h1000000000000050, 64'h000000000000000B);
-        write_mem(be_mem.bank.mem, 64'h1000000000000058, 64'h000000000000000C);
-        write_mem(be_mem.bank.mem, 64'h1000000000000060, 64'h000000000000000D);
-        write_mem(be_mem.bank.mem, 64'h1000000000000068, 64'h000000000000000E);
-        write_mem(be_mem.bank.mem, 64'h1000000000000070, 64'h000000000000000F);
-        write_mem(be_mem.bank.mem, 64'h1000000000000078, 64'h0000000000000010);
-        
-        
+        for (int i = 0; i < `TRANSFER_WORD_COUNT; i=i+1) begin
+            write_mem(be_mem.bank.mem, 64'h1000000000000000+i*8, 64'h0000000000000000+i+1);
+        end
+    
+        /*
         // AXI to AXI-Stream transfer
         write_mem(desc_mem.bank.mem, 64'h00000000000090c0, 64'h2800006B_00000080); // 32bit flags | 32bit length (in bytes)
         write_mem(desc_mem.bank.mem, 64'h00000000000090c8, 64'h0000000000009100); // next descriptor
@@ -229,14 +218,14 @@ module tb_idma_desc64fe_axisbe();
         write_mem(desc_mem.bank.mem, 64'h0000000000009108, 64'hFFFFFFFFFFFFFFFF); // next descriptor -> no desc
         write_mem(desc_mem.bank.mem, 64'h0000000000009110, 64'h0000000000000000); // source addr -> source is AXI-Stream
         write_mem(desc_mem.bank.mem, 64'h0000000000009118, 64'h2000000000000000); // destination addr
-        
-        /*
-        // AXI to AXI transfer
-        write_mem(desc_mem.bank.mem, 64'hf000000000000000, 64'h0000006B_00000080); // 32bit flags | 32bit length (in bytes)
-        write_mem(desc_mem.bank.mem, 64'hf000000000000008, 64'hFFFFFFFFFFFFFFFF); // next descriptor
-        write_mem(desc_mem.bank.mem, 64'hf000000000000010, 64'h0000000000000000); // source addr
-        write_mem(desc_mem.bank.mem, 64'hf000000000000018, 64'H1000000000000000); // destination addr
         */
+        
+        // AXI to AXI transfer
+        write_mem(desc_mem.bank.mem, 64'h00000000000090c0, {32'h0000006B, `TRANSFER_WORD_COUNT*32'h8}); // 32bit flags | 32bit length (in bytes)
+        write_mem(desc_mem.bank.mem, 64'h00000000000090c8, 64'hFFFFFFFFFFFFFFFF); // next descriptor
+        write_mem(desc_mem.bank.mem, 64'h00000000000090D0, 64'h1000000000000000); // source start addr
+        write_mem(desc_mem.bank.mem, 64'h00000000000090D8, 64'H2000000000000000); // destination start addr
+        
     end
 
     AXI_BUS_DV #(
@@ -286,10 +275,20 @@ module tb_idma_desc64fe_axisbe();
     end
     
     initial begin
-        #1000ns;
+        @(posedge dma.irq_o);
+        #100ns;
         
-        for(int i = 0;i < 16; i=i+1) begin
-            assert(be_mem.bank.mem[64'h2000000000000000+i*8] == i+1);
+        for(int i = 0;i < `TRANSFER_WORD_COUNT; i=i+1) begin
+            automatic bit [63:0] raddr = 64'h2000000000000000+i*8;
+            automatic bit [63:0] memval; // be_mem.bank.mem[raddr]
+            automatic bit [63:0] exp = i+1;
+            
+            for (int j = 0; j < 8; j=j+1) begin
+                memval[j*8+:8] = be_mem.bank.mem[raddr+j];
+            end
+            
+            assert(memval == i+1)
+                else $display("[ERROR] End of test check fail!!! Addr: %0h. Exp: %0h. Obs: %0h.", raddr, exp, memval);
         end
         
         $finish();
@@ -369,13 +368,8 @@ module tb_idma_desc64fe_axisbe();
             
             @(posedge clk); // Fake accelerator delay
             
-            //$display("[iDMA][AXI-S][Slave][%0t] Before send: DATA=%0h LAST=%0h", $time, r_data, r_last);
             read_drv.send(r_data, r_last);
             $display("[iDMA][AXI-S][Slave][%0t] Accelerator sent to DUT: DATA=%0h LAST=%0h", $time, r_data, r_last);
-        
-            //$display("[iDMA][AXI-S][Slave][%0t] Queue data:", $time);
-            //foreach(fake_accelerator_data_q[i])
-            //    $display("queue[%0d] = %0d", i, fake_accelerator_data_q[i]);
         end
     end
     

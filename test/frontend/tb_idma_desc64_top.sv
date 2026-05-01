@@ -126,14 +126,14 @@ module tb_idma_desc64_top
     REG_BUS #(
         .ADDR_WIDTH(64),
         .DATA_WIDTH(64)
-    ) i_reg_iface_bus (clk);
+    ) i_s_axi_reg_iface_bus (clk);
 
     reg_driver #(
         .AW(64),
         .DW(64),
         .TA(APPL_DELAY),
         .TT(ACQ_DELAY)
-    ) i_reg_iface_driver = new (i_reg_iface_bus);
+    ) i_s_axi_reg_iface_driver = new (i_s_axi_reg_iface_bus);
 
     axi_resp_t dma_master_response;
     axi_req_t dma_master_request;
@@ -220,14 +220,14 @@ module tb_idma_desc64_top
         .axi_rsp_o  ( dma_master_response  )
     );
 
-    assign dma_slave_request.addr  = i_reg_iface_bus.addr;
-    assign dma_slave_request.write = i_reg_iface_bus.write;
-    assign dma_slave_request.wdata = i_reg_iface_bus.wdata;
-    assign dma_slave_request.wstrb = i_reg_iface_bus.wstrb;
-    assign dma_slave_request.valid = i_reg_iface_bus.valid;
-    assign i_reg_iface_bus.rdata   = dma_slave_response.rdata;
-    assign i_reg_iface_bus.ready   = dma_slave_response.ready;
-    assign i_reg_iface_bus.error   = dma_slave_response.error;
+    assign dma_slave_request.addr  = i_s_axi_reg_iface_bus.addr;
+    assign dma_slave_request.write = i_s_axi_reg_iface_bus.write;
+    assign dma_slave_request.wdata = i_s_axi_reg_iface_bus.wdata;
+    assign dma_slave_request.wstrb = i_s_axi_reg_iface_bus.wstrb;
+    assign dma_slave_request.valid = i_s_axi_reg_iface_bus.valid;
+    assign i_s_axi_reg_iface_bus.rdata   = dma_slave_response.rdata;
+    assign i_s_axi_reg_iface_bus.ready   = dma_slave_response.ready;
+    assign i_s_axi_reg_iface_bus.error   = dma_slave_response.error;
 
     `AXI_ASSIGN_FROM_REQ(i_axi_iface_bus, dma_master_request);
     `AXI_ASSIGN_FROM_RESP(i_axi_iface_bus, dma_master_response);
@@ -386,7 +386,7 @@ module tb_idma_desc64_top
     // regbus slave interaction (we're acting as master)
     task regbus_slave_interaction();
         automatic stimulus_t current_stimulus_group[$];
-        i_reg_iface_driver.reset_master();
+        i_s_axi_reg_iface_driver.reset_master();
         @(posedge rst_n);
 
         forever begin
@@ -397,7 +397,7 @@ module tb_idma_desc64_top
             wait (generated_stimuli.size() > '0);
             current_stimulus_group = generated_stimuli.pop_front();
 
-            i_reg_iface_driver.send_write(
+            i_s_axi_reg_iface_driver.send_write(
                 .addr (IDMA_DESC64_DESC_ADDR_OFFSET) ,
                 .data (current_stimulus_group[0].base),
                 .strb (8'hff)                         ,
@@ -691,7 +691,7 @@ module tb_idma_desc64_top
                 forever begin
                     automatic logic [63:0] status;
                     automatic logic error;
-                    i_reg_iface_driver.send_read(
+                    i_s_axi_reg_iface_driver.send_read(
                         .addr(IDMA_DESC64_STATUS_OFFSET),
                         .data(status),
                         .error(error)

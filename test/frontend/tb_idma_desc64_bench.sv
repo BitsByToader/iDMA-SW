@@ -161,14 +161,14 @@ module tb_idma_desc64_bench
     REG_BUS #(
         .ADDR_WIDTH(64),
         .DATA_WIDTH(64)
-    ) i_reg_iface_bus (clk);
+    ) i_s_axi_reg_iface_bus (clk);
 
     reg_driver #(
         .AW(64),
         .DW(64),
         .TA(APPL_DELAY),
         .TT(ACQ_DELAY)
-    ) i_reg_iface_driver = new (i_reg_iface_bus);
+    ) i_s_axi_reg_iface_driver = new (i_s_axi_reg_iface_bus);
 
     axi_resp_t dma_fe_master_response;
     axi_req_t  dma_fe_master_request;
@@ -422,8 +422,8 @@ module tb_idma_desc64_bench
         .mst_resp_i  ( axi_mem_response       )
     );
 
-    `REG_BUS_ASSIGN_TO_REQ(dma_slave_request, i_reg_iface_bus);
-    `REG_BUS_ASSIGN_FROM_RSP(i_reg_iface_bus, dma_slave_response);
+    `REG_BUS_ASSIGN_TO_REQ(dma_slave_request, i_s_axi_reg_iface_bus);
+    `REG_BUS_ASSIGN_FROM_RSP(i_s_axi_reg_iface_bus, dma_slave_response);
 
     `AXI_ASSIGN_FROM_REQ(i_axi_iface_bus, dma_fe_master_request);
     `AXI_ASSIGN_FROM_RESP(i_axi_iface_bus, dma_fe_master_response);
@@ -598,7 +598,7 @@ module tb_idma_desc64_bench
     // regbus slave interaction (we're acting as master)
     task regbus_slave_interaction();
         automatic stimulus_t current_stimulus_group[$];
-        i_reg_iface_driver.reset_master();
+        i_s_axi_reg_iface_driver.reset_master();
         @(posedge rst_n);
 
         forever begin
@@ -609,7 +609,7 @@ module tb_idma_desc64_bench
             wait (generated_stimuli.size() > '0);
             current_stimulus_group = generated_stimuli.pop_front();
 
-            i_reg_iface_driver.send_write(
+            i_s_axi_reg_iface_driver.send_write(
                 .addr (IDMA_DESC64_DESC_ADDR_OFFSET) ,
                 .data (current_stimulus_group[0].base),
                 .strb (8'hff)                         ,
@@ -848,7 +848,7 @@ module tb_idma_desc64_bench
                 forever begin
                     automatic logic [63:0] status;
                     automatic logic error;
-                    i_reg_iface_driver.send_read(
+                    i_s_axi_reg_iface_driver.send_read(
                         .addr(IDMA_DESC64_STATUS_OFFSET),
                         .data(status),
                         .error(error)
